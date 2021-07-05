@@ -27,13 +27,16 @@
     <ClInclude Include="DesktopWallpaper.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="DebugHeaders.h">
+    <ClInclude Include="DebugDefinitions.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Strings.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="WorkerWEnumerator.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="TrayMenuItems.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
