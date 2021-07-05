@@ -1,0 +1,35 @@
+{
+	"main": {
+		"as_source": false,
+		"path": "shaders/main.glsl",
+		"inputs": [
+			{
+				"type": "webcam"
+			},
+			{
+				"type": "image",
+				"path": "images/sample_image.png"
+			},
+			{
+				"type": "microphone"
+			},
+			"none"
+		]
+	},
+	"A": {
+		"as_source": true,
+		"source": "gl_FragColor = vec4(0.0);",
+		"inputs": [
+			"none",
+			"none",
+			{
+				"type": "buffer",
+				"bufferId": 0
+			},
+			"none"
+		]
+	},
+	"B": "none",
+	"C": "none",
+	"D": "none"
+}
