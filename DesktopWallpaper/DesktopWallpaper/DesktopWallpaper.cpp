@@ -365,7 +365,7 @@ LONG WINAPI trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
 					trayMainShaderMenu = CreatePopupMenu();
 					InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_OPEN, _T("Open"));
-					InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_NEW, _T("New"));
+					InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_NEW, _T("New")); // TODO: Do we need it?
 					InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 0"));
 					InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 1"));
 					InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 2"));
@@ -374,8 +374,8 @@ LONG WINAPI trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 					// TODO: Create new submenu for each buffer / shader and add short info about input type
 					trayMainBufferAShaderMenu = CreatePopupMenu();
 					InsertMenu(trayMainBufferAShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_OPEN, _T("Open"));
-					InsertMenu(trayMainBufferAShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_NEW, _T("New"));
-					InsertMenu(trayMainBufferAShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_REMOVE, _T("Remove"));
+					InsertMenu(trayMainBufferAShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_NEW, _T("New")); // TODO: Do we need it?
+					InsertMenu(trayMainBufferAShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_REMOVE, _T("Remove")); // TODO: Change to "Enabled" and "Paused"? because if it is paused, it is not evaluated on each frame and if it is not enabled, it is removed from pack
 					InsertMenu(trayMainBufferAShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 0")); // TODO: Input preview
 					InsertMenu(trayMainBufferAShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 1"));
 					InsertMenu(trayMainBufferAShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 2"));
