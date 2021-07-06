@@ -30,6 +30,8 @@
 #include <memory.h>
 #include <tchar.h>
 #include <string>
+#include <thread>
+#include <mutex>
 
 #include <GL/glew.h>
 #include <GL/gl.h>

@@ -1,5 +1,6 @@
 // DesktopWallpaper.cpp : Defines the entry point for the application.
 //
+// Usable: https://zetcode.com/gui/winapi/menus/
 
 #include "framework.h"
 #include "DesktopWallpaper.h"
@@ -52,16 +53,20 @@ GLuint glBufferDShaderProgramID = -1; // Buffer D shader program ID
 GLInput glBufferDInputs[4];           // > Inputs
 
 // >> Scene related
-BOOL   scFullscreen = FALSE;
-BOOL   scPaused = FALSE;        // Indicates if rendering is paused
-double scPauseTimestamp = 0;    // Holds timestamp of the pause
-double scTimestamp = 0;         // Holds timestamp of the previous frame
-int    scFrames = 0;            // Holds number of frames rendered
-BOOL   scMouseEnabled = FALSE;  // Indicates if Mouse input is enabled
-POINT  scMouse;                 // Holds last mouse location
-double scMinFrameTime = 0.0;    // Holds minimal frame time (1.0 / FPS)
+BOOL   scFullscreen     = FALSE;      // Indicates if scene is fullscreen (Full desktop space)
+BOOL   scPaused         = FALSE;      // Indicates if rendering is paused
+double scPauseTimestamp = 0;          // Holds timestamp of the pause
+double scTimestamp      = 0;          // Holds timestamp of the previous frame
+int    scFrames         = 0;          // Holds number of frames rendered
+BOOL   scMouseEnabled   = FALSE;      // Indicates if Mouse input is enabled
+POINT  scMouse;                       // Holds last mouse location
+double scMinFrameTime   = 1.0 / 30.0; // Holds minimal frame time (1.0 / FPS)
+int    scFPSMode        = 30;         // Just defines the FPS used
+BOOL   scSoundEnabled   = FALSE;      // Indicates if sound capture enabled / disabled. Used to force disable sound capture if shader uses audio input
 
-BOOL   scSoundEnabled = FALSE;  // Indicates if sound capture enabled / disabled. Used to force disable sound capture if shader uses audio input
+// >> Threading related
+std::thread renderThread;
+std::mutex renderMutex;
 
 // TODO:
 // System sound source picker
@@ -166,6 +171,18 @@ void renderSC() {
 }
 
 
+// Starts thread for rendering scene, synchronizes with main thread for careful event processing and resource rebinding
+void startRenderThread() {
+	
+}
+
+
+// Carefull stop application with dispose of all resources, threads and exit
+void exitApp() {
+
+}
+
+
 // Handler for enumerating all existing displays
 BOOL CALLBACK displayEnumerateProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM dwData) {
 	MONITORINFO info;
@@ -223,19 +240,22 @@ void enumerateDisplays() {
 
 
 // Tray window event dispatcher
-LONG WINAPI trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-	// 0-level menu:
-	//  Basic controls
-	HMENU menu0;
-	// 1-level menu:
-	//  Specific controls (For example: Main shader properties)
-	HMENU menu1;
-	// 2-level menu:
-	//  Specific controls (For example: Shader input selection)
-	HMENU menu2;
-	// 3-level menu:
-	//  Specific controls (For example: Buffer (A / B / C / D) selection for shader input)
-	HMENU menu3;
+LONG WINAPI trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) { // TODO: Accelerators &
+	// Main Tray menu
+	HMENU trayMainMenu;
+	// Tray menu for FPS selection
+	HMENU trayFPSSelectMenu;
+	// Tray menu sound source selection
+	HMENU traySoundSourceMenu;
+	// Tray menu Main shader config
+	HMENU trayMainShaderMenu;
+	// Tray menu buffer shader config
+	HMENU trayMainBufferAShaderMenu;
+	HMENU trayMainBufferBShaderMenu;
+	HMENU trayMainBufferCShaderMenu;
+	HMENU trayMainBufferDShaderMenu;
+	// Tray menu input type selection
+	HMENU trayMainInputTypeMenu;
 
 	// Event specific info
 	int wmId, wmEvent;
@@ -249,73 +269,163 @@ LONG WINAPI trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 				case WM_RBUTTONDOWN: {
 					// Retrieve cursor position and spawn menu in click location
 					GetCursorPos(&lpClickPoint);
-					menu0 = CreatePopupMenu();
+					trayMainMenu = CreatePopupMenu();
 
 					// Build level 0 menu
-					InsertMenu(menu0, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_MOVETONEXTDISPLAY, _T("Move to next display"));
-					InsertMenu(menu0, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_MOVETOPREVDISPLAY, _T("Move to prev display"));
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_MOVETONEXTDISPLAY, _T("Move to next display"));
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_MOVETOPREVDISPLAY, _T("Move to prev display"));
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_FULLSCREEN, _T("Fullscreen"));
 					if (scFullscreen)
-						InsertMenu(menu0, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_FULLSCREEN, _T("Single screen"));
-					else
-						InsertMenu(menu0, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_FULLSCREEN, _T("Fullscreen"));
-					InsertMenu(menu0, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_RESCAN_DISPLAYS, _T("Rescan displays"));
+						CheckMenuItem(trayMainMenu, ID_SYSTRAYMENU_FULLSCREEN, MF_CHECKED);
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_RESCAN_DISPLAYS, _T("Rescan displays"));
 
-					InsertMenu(menu0, 0xFFFFFFFF, MF_SEPARATOR, IDM_SEP, _T("SEP"));
+					//
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_SEPARATOR, IDM_SEP, _T("SEP"));
+					//
 
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_PAUSE, _T("Pause"));
 					if (scPaused)
-						InsertMenu(menu0, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_PAUSE, _T("Resume"));
-					else
-						InsertMenu(menu0, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_PAUSE, _T("Pause"));
-					InsertMenu(menu0, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_RESET_TIME, _T("Reset time"));
-					InsertMenu(menu0, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_RELOAD_INPUTS, _T("Reload inputs"));
-					InsertMenu(menu0, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_RELOAD_PACK, _T("Reload pack"));
+						CheckMenuItem(trayMainMenu, ID_SYSTRAYMENU_PAUSE, MF_CHECKED);
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_RESET_TIME, _T("Reset time"));
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_RELOAD_INPUTS, _T("Reload inputs"));
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_RELOAD_PACK, _T("Reload pack"));
 
-					InsertMenu(menu0, 0xFFFFFFFF, MF_SEPARATOR, IDM_SEP, _T("SEP"));
+					//
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_SEPARATOR, IDM_SEP, _T("SEP"));
+					//
 
-					// TODO: Add FPS stepping
-					InsertMenu(menu0, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_FPS_UP, _T("FPS up"));
-					InsertMenu(menu0, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_FPS_DOWN, _T("FPS down"));
+					trayFPSSelectMenu = CreatePopupMenu();
+					InsertMenu(trayFPSSelectMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_FPS_SUBMENU + 1, _T("1 FPS"));
+					InsertMenu(trayFPSSelectMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_FPS_SUBMENU + 2, _T("15 FPS"));
+					InsertMenu(trayFPSSelectMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_FPS_SUBMENU + 3, _T("30 FPS"));
+					InsertMenu(trayFPSSelectMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_FPS_SUBMENU + 4, _T("60 FPS"));
+					InsertMenu(trayFPSSelectMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_FPS_SUBMENU + 5, _T("120 FPS"));
 
-					InsertMenu(menu0, 0xFFFFFFFF, MF_SEPARATOR, IDM_SEP, _T("SEP"));
-					
+					// IDK how to concat and use this LPWSTRPTR shit
+					if (scFPSMode == 1) {
+						InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayFPSSelectMenu, _T("FPS (1)"));
+						CheckMenuItem(trayFPSSelectMenu, ID_SYSTRAYMENU_FPS_SUBMENU + 1, MF_CHECKED);
+					} else if (scFPSMode == 15) {
+						InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayFPSSelectMenu, _T("FPS (15)"));
+						CheckMenuItem(trayFPSSelectMenu, ID_SYSTRAYMENU_FPS_SUBMENU + 2, MF_CHECKED);
+					} else if (scFPSMode == 30) {
+						InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayFPSSelectMenu, _T("FPS (30)"));
+						CheckMenuItem(trayFPSSelectMenu, ID_SYSTRAYMENU_FPS_SUBMENU + 3, MF_CHECKED);
+					} else if (scFPSMode == 60) {
+						InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayFPSSelectMenu, _T("FPS (60)"));
+						CheckMenuItem(trayFPSSelectMenu, ID_SYSTRAYMENU_FPS_SUBMENU + 4, MF_CHECKED);
+					} else{ // scFPSMode == 120
+						InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayFPSSelectMenu, _T("FPS (120)"));
+						CheckMenuItem(trayFPSSelectMenu, ID_SYSTRAYMENU_FPS_SUBMENU + 5, MF_CHECKED);
+					}
+
+					//
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_SEPARATOR, IDM_SEP, _T("SEP"));
+					//
+
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_SOUND_MODE, _T("Enable sound capture"));
 					if (scSoundEnabled)
-						InsertMenu(menu0, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_SOUND_MODE, _T("Disable sound capture"));
-					else
-						InsertMenu(menu0, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_SOUND_MODE, _T("Enable sound capture"));
-					// TODO: Enumerate sound inputs as submenu items
-					InsertMenu(menu0, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_SOUND_SOURCE, _T("Sound source"));
+						CheckMenuItem(trayMainMenu, ID_SYSTRAYMENU_SOUND_MODE, MF_CHECKED);
+
+					// TODO: Enumerate sound inputs as submenu items + add selection mark
+					traySoundSourceMenu = CreatePopupMenu();
+					InsertMenu(traySoundSourceMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_SOUND_SOURCE + 1, _T("Low definition audio device"));
+					InsertMenu(traySoundSourceMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_SOUND_SOURCE + 2, _T("Micwofone"));
+					InsertMenu(traySoundSourceMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_SOUND_SOURCE + 3, _T("Moan box"));
+					CheckMenuItem(traySoundSourceMenu, ID_SYSTRAYMENU_SOUND_SOURCE + 3, MF_CHECKED);
+
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) traySoundSourceMenu, _T("Sound source"));
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_MOUSE_MODE, _T("Enable mouse"));
 					if (scMouseEnabled)
-						InsertMenu(menu0, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_MOUSE_MODE, _T("Disable mouse"));
-					else
-						InsertMenu(menu0, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_MOUSE_MODE, _T("Enable mouse"));
+						CheckMenuItem(trayMainMenu, ID_SYSTRAYMENU_MOUSE_MODE, MF_CHECKED);
 
-					InsertMenu(menu0, 0xFFFFFFFF, MF_SEPARATOR, IDM_SEP, _T("SEP"));
+					//
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_SEPARATOR, IDM_SEP, _T("SEP"));
+					//
 
-					InsertMenu(menu0, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_OPEN_PACK, _T("Open pack"));
-					InsertMenu(menu0, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_SAVE_PACK, _T("Save pack"));
-					InsertMenu(menu0, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_SAVE_PACK_AS, _T("Save pack as"));
-					InsertMenu(menu0, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_NEW_PACK, _T("New pack"));
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_OPEN_PACK, _T("Open pack"));
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_SAVE_PACK, _T("Save pack"));
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_SAVE_PACK_AS, _T("Save pack as"));
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_NEW_PACK, _T("New pack"));
 
-					InsertMenu(menu0, 0xFFFFFFFF, MF_SEPARATOR, IDM_SEP, _T("SEP"));
+					//
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_SEPARATOR, IDM_SEP, _T("SEP"));
+					//
 
-					InsertMenu(menu0, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_MAIN_SHADER, _T("Main shader"));
-					InsertMenu(menu0, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_BUFFER_A_SHADER, _T("Buffer A shader"));
-					InsertMenu(menu0, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_BUFFER_B_SHADER, _T("Buffer B shader"));
-					InsertMenu(menu0, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_BUFFER_C_SHADER, _T("Buffer C shader"));
-					InsertMenu(menu0, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_BUFFER_D_SHADER, _T("Buffer D shader"));
+					trayMainInputTypeMenu = CreatePopupMenu();
+					InsertMenu(trayMainInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_INPUT_BUFFER_A, _T("Buffer A"));
+					InsertMenu(trayMainInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_INPUT_BUFFER_B, _T("Buffer B"));
+					InsertMenu(trayMainInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_INPUT_BUFFER_C, _T("Buffer C"));
+					InsertMenu(trayMainInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_INPUT_BUFFER_D, _T("Buffer D"));
+					InsertMenu(trayMainInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_INPUT_IMAGE, _T("Image"));
+					InsertMenu(trayMainInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_INPUT_MICROPHONE, _T("Microphone"));
+					InsertMenu(trayMainInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_INPUT_AUDIO, _T("Audio file"));
+					InsertMenu(trayMainInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_INPUT_VIDEO, _T("Video file"));
+					InsertMenu(trayMainInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_INPUT_WEBCAM, _T("Webcam"));
 
+					trayMainShaderMenu = CreatePopupMenu();
+					InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_OPEN, _T("Open"));
+					InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_NEW, _T("New"));
+					InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 0"));
+					InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 1"));
+					InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 2"));
+					InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 3"));
 
-					InsertMenu(menu0, 0xFFFFFFFF, MF_SEPARATOR, IDM_SEP, _T("SEP"));
+					// TODO: Create new submenu for each buffer / shader and add short info about input type
+					trayMainBufferAShaderMenu = CreatePopupMenu();
+					InsertMenu(trayMainBufferAShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_OPEN, _T("Open"));
+					InsertMenu(trayMainBufferAShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_NEW, _T("New"));
+					InsertMenu(trayMainBufferAShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_REMOVE, _T("Remove"));
+					InsertMenu(trayMainBufferAShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 0")); // TODO: Input preview
+					InsertMenu(trayMainBufferAShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 1"));
+					InsertMenu(trayMainBufferAShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 2"));
+					InsertMenu(trayMainBufferAShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 3"));
 
+					trayMainBufferBShaderMenu = CreatePopupMenu();
+					InsertMenu(trayMainBufferBShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_OPEN, _T("Open"));
+					InsertMenu(trayMainBufferBShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_NEW, _T("New"));
+					InsertMenu(trayMainBufferBShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_REMOVE, _T("Remove"));
+					InsertMenu(trayMainBufferBShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 0")); // TODO: Input preview
+					InsertMenu(trayMainBufferBShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 1"));
+					InsertMenu(trayMainBufferBShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 2"));
+					InsertMenu(trayMainBufferBShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 3"));
+
+					trayMainBufferCShaderMenu = CreatePopupMenu();
+					InsertMenu(trayMainBufferCShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_OPEN, _T("Open"));
+					InsertMenu(trayMainBufferCShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_NEW, _T("New"));
+					InsertMenu(trayMainBufferCShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_REMOVE, _T("Remove"));
+					InsertMenu(trayMainBufferCShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 0")); // TODO: Input preview
+					InsertMenu(trayMainBufferCShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 1"));
+					InsertMenu(trayMainBufferCShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 2"));
+					InsertMenu(trayMainBufferCShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 3"));
+
+					trayMainBufferDShaderMenu = CreatePopupMenu();
+					InsertMenu(trayMainBufferDShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_OPEN, _T("Open"));
+					InsertMenu(trayMainBufferDShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_NEW, _T("New"));
+					InsertMenu(trayMainBufferDShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_REMOVE, _T("Remove"));
+					InsertMenu(trayMainBufferDShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 0")); // TODO: Input preview
+					InsertMenu(trayMainBufferDShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 1"));
+					InsertMenu(trayMainBufferDShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 2"));
+					InsertMenu(trayMainBufferDShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 3"));
+
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainShaderMenu, _T("Main shader"));
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainBufferAShaderMenu, _T("Buffer A shader"));
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainBufferBShaderMenu, _T("Buffer B shader"));
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainBufferCShaderMenu, _T("Buffer C shader"));
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainBufferDShaderMenu, _T("Buffer D shader"));
+
+					//
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_SEPARATOR, IDM_SEP, _T("SEP"));
+					//
+
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_DEBUG_WARNINGS, _T("Enable debug output"));
 					if (glDebugOutput)
-						InsertMenu(menu0, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_DEBUG_WARNINGS, _T("Disable debug output"));
-					else
-						InsertMenu(menu0, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_DEBUG_WARNINGS, _T("Enable debug output"));
-					InsertMenu(menu0, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_EXIT, _T("Exit"));
+						CheckMenuItem(trayMainMenu, ID_SYSTRAYMENU_DEBUG_WARNINGS, MF_CHECKED);
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_EXIT, _T("Exit"));
 
 					// Display menu, finally
 					SetForegroundWindow(hWnd);
-					TrackPopupMenu(menu0, TPM_LEFTALIGN | TPM_LEFTBUTTON | TPM_BOTTOMALIGN, lpClickPoint.x, lpClickPoint.y, 0, hWnd, NULL);
+					TrackPopupMenu(trayMainMenu, TPM_LEFTALIGN | TPM_LEFTBUTTON | TPM_BOTTOMALIGN, lpClickPoint.x, lpClickPoint.y, 0, hWnd, NULL);
 					return TRUE;
 				}
 				break;
@@ -651,6 +761,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 	UpdateWindow(glWindow);
 
 	//TODO: Start new thread for render
+	startRenderThread();
 
 	// Enter message dispatching loop
 	enterDispatchLoop();
