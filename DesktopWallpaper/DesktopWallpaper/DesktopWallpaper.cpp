@@ -41,32 +41,52 @@ struct GLInput {
 	// Defines additional data needed (For example audio track information / video information / e.t.c)
 };
 
+// VBO with vertices of square
+GLuint glSquareVBO;
+
+// Shaders (if exists)
 GLuint glMainShaderProgramID = -1;    // Main shader program ID
-GLInput glMainInputs[4];              // > Inputs
 GLuint glBufferAShaderProgramID = -1; // Buffer A shader program ID
-GLInput glBufferAInputs[4];           // > Inputs
 GLuint glBufferBShaderProgramID = -1; // Buffer B shader program ID
-GLInput glBufferBInputs[4];           // > Inputs
 GLuint glBufferCShaderProgramID = -1; // Buffer C shader program ID
-GLInput glBufferCInputs[4];           // > Inputs
 GLuint glBufferDShaderProgramID = -1; // Buffer D shader program ID
-GLInput glBufferDInputs[4];           // > Inputs
+
+// Framebuffers for these shaders
+GLuint glMainShaderFramebuffer;
+GLuint glBufferAShaderFramebuffer;
+GLuint glBufferBShaderFramebuffer;
+GLuint glBufferCShaderFramebuffer;
+GLuint glBufferDShaderFramebuffer;
+
+// Textures to render in.
+//  This textures will exist till the end of the program because they 
+//   are used as temp variables storing buffer output for the next frame 
+//   and can be used as input even if shader for this buffer (A / B / C / D) 
+//   was removed.
+GLuint glMainShaderFramebufferTexture;
+GLuint glBufferAShaderFramebufferTexture;
+GLuint glBufferBShaderFramebufferTexture;
+GLuint glBufferCShaderFramebufferTexture;
+GLuint glBufferDShaderFramebufferTexture;
+
 
 // >> Scene related
-BOOL   scFullscreen     = FALSE;      // Indicates if scene is fullscreen (Full desktop space)
-BOOL   scPaused         = FALSE;      // Indicates if rendering is paused
-double scPauseTimestamp = 0;          // Holds timestamp of the pause
-double scTimestamp      = 0;          // Holds timestamp of the previous frame
-int    scFrames         = 0;          // Holds number of frames rendered
-BOOL   scMouseEnabled   = FALSE;      // Indicates if Mouse input is enabled
-POINT  scMouse;                       // Holds last mouse location
-double scMinFrameTime   = 1.0 / 30.0; // Holds minimal frame time (1.0 / FPS)
-int    scFPSMode        = 30;         // Just defines the FPS used
-BOOL   scSoundEnabled   = FALSE;      // Indicates if sound capture enabled / disabled. Used to force disable sound capture if shader uses audio input
+BOOL   scFullscreen     = FALSE;       // Indicates if scene is fullscreen (Full desktop space)
+BOOL   scPaused         = FALSE;       // Indicates if rendering is paused
+double scPauseTimestamp = 0;           // Holds timestamp of the pause
+double scTimestamp      = 0;           // Holds timestamp of the previous frame
+int    scFrames         = 0;           // Holds number of frames rendered
+BOOL   scMouseEnabled   = FALSE;       // Indicates if Mouse input is enabled
+POINT  scMouse;                        // Holds last mouse location
+int    scMinFrameTime   = 1000 / 30;   // Holds minimal frame time in ms (1000 / FPS)
+int    scFPSMode        = 30;          // Just defines the FPS used
+BOOL   scSoundEnabled   = FALSE;       // Indicates if sound capture enabled / disabled. Used to force disable sound capture if shader uses audio input
 
 // >> Threading related
-std::thread renderThread;
-std::mutex renderMutex;
+std::thread*                          renderThread = nullptr;   // Thread for rendering the wallpaper
+std::mutex                            renderMutex;              // Captured on each draw frame
+BOOL                                  appExiting = FALSE;       // Indicates if application exits
+BOOL                                  appLockRequested = FALSE; // indicates if main thread wants to acquire lock
 
 // TODO:
 // System sound source picker
@@ -79,9 +99,83 @@ std::mutex renderMutex;
 // Direct download from shadertoy.com
 
 
+struct ShaderCompilationStatus {
+	GLuint shaderID = -1;
+	BOOL success = FALSE;
+};
+
+// Compiles fragment shader and returns shader program ID
+ShaderCompilationStatus compileShader(const char* fragmentSource) {
+
+	// Default Vertex shader
+	const char* vertexSource = R"glsl(
+		#version 150 core
+
+		in vec2 position;
+
+		void main()
+		{
+			gl_Position = vec4(position, 0.0, 1.0);
+		}
+	)glsl";
+
+	GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
+	glShaderSource(vertexShader, 1, &vertexSource, NULL);
+	glCompileShader(vertexShader);
+
+	GLint status;
+	glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &status);
+
+	if (glDebugOutput && status != GL_TRUE) {
+
+		char buffer[2048];
+		glGetShaderInfoLog(vertexShader, 2048, NULL, buffer);
+
+		MessageBoxA(
+			NULL,
+			buffer,
+			"Vertex shader compilation error",
+			MB_ICONERROR | MB_OK
+		);
+
+		return { 0, FALSE };
+	}
+
+	// Compile Fragment shader
+	GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+	glShaderSource(fragmentShader, 1, &fragmentSource, NULL);
+	glCompileShader(fragmentShader);
+
+	status;
+	glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &status);
+
+	if (glDebugOutput && status != GL_TRUE) {
+
+		char buffer[2048];
+		glGetShaderInfoLog(fragmentShader, 2048, NULL, buffer);
+
+		MessageBoxA(
+			NULL,
+			buffer,
+			"Fragment shader compilation error",
+			MB_ICONERROR | MB_OK
+		);
+
+		return { 0, FALSE };
+	}
+
+	GLuint shaderProgram = glCreateProgram();
+	glAttachShader(shaderProgram, vertexShader);
+	glAttachShader(shaderProgram, fragmentShader);
+
+	//...
+}
+
+
 // Initialize the OpenGL scene
 void initSC() {
-	// I forget what it does, so help me to render fragment shader only :D
+
+	// Here be dragons
 	glViewport(0, 0, glWidth, glHeight);
 	glClearColor(0, 0, 0, 0);
 
@@ -89,30 +183,130 @@ void initSC() {
 	scTimestamp = 0.0;
 	scFrames = 0;
 
-	glGenVertexArrays(1, &glSCVAO);
-	glGenBuffers(1, &glSCVBO);
-	glGenBuffers(1, &glSCEBO);
 
-	glBindVertexArray(glSCVAO);
+	// Reference for stupid me: https://open.gl/drawing
 
-	glBindBuffer(GL_ARRAY_BUFFER, glSCVBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(glSCVertices), glSCVertices, GL_STATIC_DRAW);
+	// Generate Array buffer with vertices of square
+	float squareVertices[] = { 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f };
 
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, glSCEBO);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(glSCIndices), glSCIndices, GL_STATIC_DRAW);
-
-	glVertexAttribPointer(glGetAttribLocation(0, "position"), 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), (GLvoid*)0);
-	glEnableVertexAttribArray(0);
-
+	glGenBuffers(1, &glSquareVBO);
+	glBindBuffer(GL_ARRAY_BUFFER, glSquareVBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(squareVertices), squareVertices, GL_STATIC_DRAW);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-	glBindVertexArray(0);
-}
 
-// Destroy Scene and all linked shaders / textures / resources
-void destroySC() {
-	if (glMainShaderProgramID != -1)
-		glDeleteProgram(glMainShaderProgramID);
+	// Generate framebuffers & framebuffer texture for main shader
+	// TODO: remove this test conditions
+	glGenFramebuffers(1, &glMainShaderFramebuffer);
+	glBindFramebuffer(GL_FRAMEBUFFER, glMainShaderFramebuffer);
+
+	glGenTextures(1, &glMainShaderFramebufferTexture);
+	glBindTexture(GL_TEXTURE_2D, glMainShaderFramebufferTexture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, glWidth, glHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+
+	glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, glMainShaderFramebufferTexture, 0);
+	glDrawBuffers(1, &glMainShaderFramebuffer);
+
+	glBindTexture(GL_TEXTURE_2D, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+
+	/*
+	// Generate framebuffers & framebuffer texture for Buffer A
+	glGenFramebuffers(1, &glBufferAShaderFramebuffer);
+	glBindFramebuffer(GL_FRAMEBUFFER, glBufferAShaderFramebuffer);
+
+	glGenTextures(1, &glBufferAShaderFramebufferTexture);
+	glBindTexture(GL_TEXTURE_2D, glBufferAShaderFramebufferTexture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, glWidth, glHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+
+	glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, glBufferAShaderFramebufferTexture, 0);
+	glDrawBuffers(1, &glBufferAShaderFramebuffer);
+
+	glBindtexture(GL_TEXTURE_2D, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+
+	// Generate framebuffers & framebuffer texture for Buffer B
+	glGenFramebuffers(1, &glBufferBShaderFramebuffer);
+	glBindFramebuffer(GL_FRAMEBUFFER, glBufferBShaderFramebuffer);
+
+	glGenTextures(1, &glBufferBShaderFramebufferTexture);
+	glBindTexture(GL_TEXTURE_2D, glBufferBShaderFramebufferTexture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, glWidth, glHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+
+	glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, glBufferBShaderFramebufferTexture, 0);
+	glDrawBuffers(1, &glBufferBShaderFramebuffer);
+
+	glBindtexture(GL_TEXTURE_2D, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+
+	// Generate framebuffers & framebuffer texture for Buffer C
+	glGenFramebuffers(1, &glBufferCShaderFramebuffer);
+	glBindFramebuffer(GL_FRAMEBUFFER, glBufferCShaderFramebuffer);
+
+	glGenTextures(1, &glBufferCShaderFramebufferTexture);
+	glBindTexture(GL_TEXTURE_2D, glBufferCShaderFramebufferTexture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, glWidth, glHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+
+	glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, glBufferCShaderFramebufferTexture, 0);
+	glDrawBuffers(1, &glBufferCShaderFramebuffer);
+
+	glBindtexture(GL_TEXTURE_2D, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+
+	// Generate framebuffers & framebuffer texture for Buffer D
+	glGenFramebuffers(1, &glBufferDShaderFramebuffer);
+	glBindFramebuffer(GL_FRAMEBUFFER, glBufferDShaderFramebuffer);
+
+	glGenTextures(1, &glBufferDShaderFramebufferTexture);
+	glBindTexture(GL_TEXTURE_2D, glBufferDShaderFramebufferTexture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, glWidth, glHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+
+	glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, glBufferDShaderFramebufferTexture, 0);
+	glDrawBuffers(1, &glBufferDShaderFramebuffer);
+
+	glBindtexture(GL_TEXTURE_2D, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	*/
+
+
+	// TODO: tuturudu
+
+
+
+
+
+	//glGenVertexArrays(1, &glSCVAO);
+	//glGenBuffers(1, &glSCVBO);
+	//glGenBuffers(1, &glSCEBO);
+	//
+	//glBindVertexArray(glSCVAO);
+	//
+	//glBindBuffer(GL_ARRAY_BUFFER, glSCVBO);
+	//glBufferData(GL_ARRAY_BUFFER, sizeof(glSCVertices), glSCVertices, GL_STATIC_DRAW);
+	//
+	//glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, glSCEBO);
+	//glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(glSCIndices), glSCIndices, GL_STATIC_DRAW);
+	//
+	//glVertexAttribPointer(glGetAttribLocation(0, "position"), 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), (GLvoid*)0);
+	//glEnableVertexAttribArray(0);
+	//
+	//glBindBuffer(GL_ARRAY_BUFFER, 0);
+	//
+	//glBindVertexArray(0);
 }
 
 // Resize the OpenGL Scene
@@ -122,6 +316,8 @@ void resizeSC() {
 	glHeight = currentWindowDimensions.bottom - currentWindowDimensions.top;
 
 	glViewport(0, 0, glWidth, glHeight);
+
+	// TODO: Resize all buffer textures
 }
 
 // Render single frame of the Scene
@@ -173,13 +369,103 @@ void renderSC() {
 
 // Starts thread for rendering scene, synchronizes with main thread for careful event processing and resource rebinding
 void startRenderThread() {
-	
+	renderThread = new std::thread([] () {
+
+		// Just timers
+		std::chrono::system_clock::time_point a = std::chrono::system_clock::now();
+		std::chrono::system_clock::time_point b = std::chrono::system_clock::now();
+
+		// Lock motex to avoid interruption when reloading resources or exiting
+		renderMutex.lock();
+
+		// Yes, while true, i don't care
+		while (true) {
+
+			// To prevent mutex lock / unlock 100500 times a second, check if lock was requested by simply 
+			//  cheking bool and after that try to relock
+			if (appLockRequested) {
+
+				// Unlock mutex and allow main thread to load texture / rebind shader / e.t.c
+				renderMutex.unlock();
+				// appLockRequested = FALSE; // TODO: Main thread should clear this flag manually
+				
+				// Wait 50ms else it will run into undefined race condilion self-lock
+				std::this_thread::sleep_for(std::chrono::milliseconds(50));
+				
+				// Now main thread acquires lock
+				renderMutex.lock();
+			}
+
+			// Check if render exit was requested
+			if (appExiting) {
+
+				// Stop render process and thread
+				renderMutex.unlock();
+				return;
+
+			} else if (scPaused) {
+				std::this_thread::sleep_for(std::chrono::milliseconds(scMinFrameTime));
+			} else{
+				a = std::chrono::system_clock::now();
+
+				// One frame render
+				renderSC();
+
+				b = std::chrono::system_clock::now();
+				auto work_time = std::chrono::duration_cast<std::chrono::milliseconds>(a - b);
+
+				if (work_time.count() < scMinFrameTime)
+					std::this_thread::sleep_for(std::chrono::milliseconds(scMinFrameTime - work_time.count()));
+			}
+		}
+	});
+}
+
+
+// Dispose all resources
+void dispose() {
+	// Unlink all shaders
+	if (glMainShaderProgramID != -1)
+		glDeleteProgram(glMainShaderProgramID);
+	if (glBufferAShaderProgramID != -1)
+		glDeleteProgram(glBufferAShaderProgramID);
+	if (glBufferBShaderProgramID != -1)
+		glDeleteProgram(glBufferBShaderProgramID);
+	if (glBufferCShaderProgramID != -1)
+		glDeleteProgram(glBufferCShaderProgramID);
+	if (glBufferDShaderProgramID != -1)
+		glDeleteProgram(glBufferDShaderProgramID);
+
+	// TODO: Unlink all resources
 }
 
 
 // Carefull stop application with dispose of all resources, threads and exit
 void exitApp() {
 
+	// Wait for rendering thread to exit
+	appExiting = TRUE;
+	renderThread->join();
+	delete renderThread;
+
+	// Tray icon delete
+	Shell_NotifyIcon(NIM_DELETE, &trayNID);
+	
+	// TODO: Menu dispose?
+	// ...
+
+	// Resource dispose
+	dispose();
+
+	// Windows dispose (rm -rf /)
+	wglMakeCurrent(NULL, NULL);
+	ReleaseDC(glWindow, glDevice);
+	wglDeleteContext(glContext);
+	DestroyWindow(trayWindow);
+	DestroyWindow(glWindow);
+
+	if (glPalette)
+		DeleteObject(glPalette);
 }
 
 
@@ -428,7 +714,9 @@ LONG WINAPI trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 					TrackPopupMenu(trayMainMenu, TPM_LEFTALIGN | TPM_LEFTBUTTON | TPM_BOTTOMALIGN, lpClickPoint.x, lpClickPoint.y, 0, hWnd, NULL);
 					return TRUE;
 				}
-				break;
+
+				default:
+					return DefWindowProc(hWnd, uMsg, wParam, lParam);
 			}
 			break;
 		}
@@ -439,12 +727,83 @@ LONG WINAPI trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
 			switch (wmId) {
 				case ID_SYSTRAYMENU_EXIT: {
-					// TODO: Multithreaded exit
-					Shell_NotifyIcon(NIM_DELETE, &trayNID);
-					destroySC();
-					DestroyWindow(hWnd);
-					DestroyWindow(glWindow);
-					break;
+					exitApp();
+					return TRUE;
+				}
+
+				case ID_SYSTRAYMENU_PAUSE: {
+					if (scPaused) {
+						appLockRequested = TRUE;
+						renderMutex.lock();
+
+						// Restore timestamp
+						glfwSetTime(scTimestamp);
+
+						appLockRequested = FALSE;
+						renderMutex.unlock();
+					}
+
+					scPaused = !scPaused;
+					return TRUE;
+				}
+
+				case ID_SYSTRAYMENU_DEBUG_WARNINGS: {
+					glDebugOutput = !glDebugOutput;
+					return TRUE;
+				}
+
+				case ID_SYSTRAYMENU_RESET_TIME: {
+					appLockRequested = TRUE;
+					renderMutex.lock();
+
+					glfwSetTime(0.0);
+					scTimestamp = 0.0;
+					scFrames = 0;
+
+					appLockRequested = FALSE;
+					renderMutex.unlock();
+					return TRUE;
+				}
+
+				case ID_SYSTRAYMENU_MOUSE_MODE: {
+					scMouseEnabled = !scMouseEnabled;
+					return TRUE;
+				}
+
+				case ID_SYSTRAYMENU_SOUND_MODE: {
+					scSoundEnabled = !scSoundEnabled;
+					return TRUE;
+				}
+
+				// There could be more beautiful code, but i was lazy in this menu entry
+				case ID_SYSTRAYMENU_FPS_SUBMENU + 1: { // 1
+					scMinFrameTime = 1000;
+					scFPSMode = 1;
+					return TRUE;
+				}
+
+				case ID_SYSTRAYMENU_FPS_SUBMENU + 2: { // 15
+					scMinFrameTime = 1000 / 15;
+					scFPSMode = 15;
+					return TRUE;
+				}
+
+				case ID_SYSTRAYMENU_FPS_SUBMENU + 3: { // 30
+					scMinFrameTime = 1000 / 30;
+					scFPSMode = 30;
+					return TRUE;
+				}
+
+				case ID_SYSTRAYMENU_FPS_SUBMENU + 4: { // 60
+					scMinFrameTime = 1000 / 60;
+					scFPSMode = 60;
+					return TRUE;
+				}
+
+				case ID_SYSTRAYMENU_FPS_SUBMENU + 5: { // 120
+					scMinFrameTime = 1000 / 120;
+					scFPSMode = 120;
+					return TRUE;
 				}
 				
 				default:
@@ -454,7 +813,7 @@ LONG WINAPI trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 		
 		case WM_DESTROY: {
 			PostQuitMessage(0);
-			break;
+			return TRUE;
 		}
 		
 		default:
@@ -678,51 +1037,17 @@ int createDesktopWindow(_In_ HINSTANCE hInstance) {
 
 // Message dispatcher simply handles all WINAPI messages and do it's work
 void enterDispatchLoop() {
-	// TODO: Multithreaded render to avoid image freeze
-
-	std::chrono::system_clock::time_point a = std::chrono::system_clock::now();
-	std::chrono::system_clock::time_point b = std::chrono::system_clock::now();
 
 	MSG msg;
 
 	while (1) {
-		if (!scPaused) {
-			a = std::chrono::system_clock::now();
-			std::chrono::duration<double, std::milli> work_time = a - b;
-
-			while (PeekMessage(&msg, NULL, 0, 0, PM_NOREMOVE)) {
-				if (GetMessage(&msg, NULL, 0, 0)) {
-					TranslateMessage(&msg);
-					DispatchMessage(&msg);
-				} else
-					goto loopExit;
-			}
-
-			if (msg.message == WM_QUIT)
-				goto loopExit;
-
-			// One frame render
-			renderSC();
-
-			if (work_time.count() < scMinFrameTime) {
-				std::chrono::duration<double, std::milli> delta_ms(scMinFrameTime - work_time.count());
-				auto delta_ms_duration = std::chrono::duration_cast<std::chrono::milliseconds>(delta_ms);
-				std::this_thread::sleep_for(std::chrono::milliseconds(delta_ms_duration.count()));
-			}
-
-			b = std::chrono::system_clock::now();
-		} else {
-			// Block till message received
-			if (GetMessage(&msg, NULL, 0, 0)) {
-				TranslateMessage(&msg);
-				DispatchMessage(&msg);
-			} else
-				goto loopExit;
-		}
+		// Block till message received
+		if (GetMessage(&msg, NULL, 0, 0)) {
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		} else
+			break;
 	}
-
-loopExit:
-	return;
 }
 
 
@@ -734,8 +1059,8 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 
 	// Debug: Display console window
 #ifdef DEBUG_DISPLAY_CONSOLE_WINDOW
-	AllocConsole();
-	FILE* reo = freopen("CONOUT$", "w+", stdout);
+		AllocConsole();
+		FILE* reo = freopen("CONOUT$", "w+", stdout);
 #endif
 
 	// Change output mode to Unicode text
@@ -767,14 +1092,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 	enterDispatchLoop();
 
 	// After dispatch loop: exit and dispose
-	destroySC();
-	wglMakeCurrent(NULL, NULL);
-	ReleaseDC(glWindow, glDevice);
-	wglDeleteContext(glContext);
-	DestroyWindow(glWindow);
-
-	if (glPalette)
-		DeleteObject(glPalette);
+	dispose();
 
 	return 0;
 }

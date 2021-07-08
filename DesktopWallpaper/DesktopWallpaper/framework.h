@@ -32,6 +32,7 @@
 #include <string>
 #include <thread>
 #include <mutex>
+#include <condition_variable>
 
 #include <GL/glew.h>
 #include <GL/gl.h>
