@@ -13,32 +13,36 @@
 #define ID_SYSTRAYMENU_MOVETONEXTDISPLAY       40001
 #define ID_SYSTRAYMENU_MOVETOPREVDISPLAY       40002
 #define ID_SYSTRAYMENU_FULLSCREEN              40003
-#define ID_SYSTRAYMENU_RESCAN_DISPLAYS         40003
+#define ID_SYSTRAYMENU_RESCAN_DISPLAYS         40004
 										       
-#define ID_SYSTRAYMENU_PAUSE                   40004
-#define ID_SYSTRAYMENU_RESET_TIME              40005
-#define ID_SYSTRAYMENU_RELOAD_INPUTS           40006
-#define ID_SYSTRAYMENU_RELOAD_PACK             40007
+#define ID_SYSTRAYMENU_PAUSE                   40005
+#define ID_SYSTRAYMENU_RESET_TIME              40006
+#define ID_SYSTRAYMENU_RELOAD_INPUTS           40007
+#define ID_SYSTRAYMENU_RELOAD_PACK             40008
 										       
-#define ID_SYSTRAYMENU_FPS_SUBMENU             40008 // 10 free
+// #define ID_SYSTRAYMENU_FPS_SUBMENU
 										       
-#define ID_SYSTRAYMENU_SOUND_MODE              40019
-#define ID_SYSTRAYMENU_SOUND_SOURCE            40032 // 256 different input sources, [ID_SYSTRAYMENU_SOUND_SOURCE_ITEM+i]
-#define ID_SYSTRAYMENU_MOUSE_MODE              40020
+#define ID_SYSTRAYMENU_SOUND_MODE              40009
+// #define ID_SYSTRAYMENU_SOUND_SOURCE
+#define ID_SYSTRAYMENU_MOUSE_MODE              40010
 										       
-#define ID_SYSTRAYMENU_OPEN_PACK               40021
-#define ID_SYSTRAYMENU_SAVE_PACK               40022
-#define ID_SYSTRAYMENU_SAVE_PACK_AS            40023
-#define ID_SYSTRAYMENU_NEW_PACK                40024
+#define ID_SYSTRAYMENU_OPEN_PACK               40011
+#define ID_SYSTRAYMENU_SAVE_PACK               40012
+#define ID_SYSTRAYMENU_SAVE_PACK_AS            40013
+#define ID_SYSTRAYMENU_NEW_PACK                40014
 										       
-#define ID_SYSTRAYMENU_MAIN_SHADER             40025
-#define ID_SYSTRAYMENU_BUFFER_A_SHADER         40026
-#define ID_SYSTRAYMENU_BUFFER_B_SHADER         40027
-#define ID_SYSTRAYMENU_BUFFER_C_SHADER         40028
-#define ID_SYSTRAYMENU_BUFFER_D_SHADER         40029
+#define ID_SYSTRAYMENU_MAIN_SHADER             40015
+#define ID_SYSTRAYMENU_BUFFER_A_SHADER         40016
+#define ID_SYSTRAYMENU_BUFFER_B_SHADER         40017
+#define ID_SYSTRAYMENU_BUFFER_C_SHADER         40018
+#define ID_SYSTRAYMENU_BUFFER_D_SHADER         40019
 
-#define ID_SYSTRAYMENU_DEBUG_WARNINGS          40030
-#define ID_SYSTRAYMENU_EXIT                    40031
+#define ID_SYSTRAYMENU_DEBUG_WARNINGS          40020
+#define ID_SYSTRAYMENU_EXIT                    40021
+
+// With gap
+#define ID_SYSTRAYMENU_FPS_SUBMENU             40022 // 10 free
+#define ID_SYSTRAYMENU_SOUND_SOURCE            40032 // 256 different input sources, [ID_SYSTRAYMENU_SOUND_SOURCE_ITEM+i]
 										       
 // Submenu for Shader config			       
 #define IDS_SHADER_OPEN		        40501

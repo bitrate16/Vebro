@@ -9,23 +9,23 @@
 // Globals
 // >> Tray related
 NOTIFYICONDATA trayNID;
-HWND trayWindow;
-HICON trayIcon;
+HWND           trayWindow;
+HICON          trayIcon;
 
 // >> Displays related
-RECT fullViewportSize;         // Size of displays in total
-std::vector<RECT> rawDisplays; // List of existing displays' dimensions as raw relative sizes
-std::vector<RECT> displays;    // List of existing displays' dimensions
+RECT              fullViewportSize; // Size of displays in total
+std::vector<RECT> rawDisplays;      // List of existing displays' dimensions as raw relative sizes
+std::vector<RECT> displays;         // List of existing displays' dimensions
 
 // >> Wallpaper related
-RECT currentWindowDimensions;
-HWND glWindow;
+RECT     currentWindowDimensions;
+HWND     glWindow;
 HPALETTE glPalette;
-HDC glDevice;
-HGLRC glContext;
-int glWidth;
-int glHeight;
-BOOL glDebugOutput = FALSE;
+HDC      glDevice;
+HGLRC    glContext;
+int      glWidth;
+int      glHeight;
+BOOL     glDebugOutput = FALSE;
 
 // >> OpenGL related
 GLuint glSCVBO, glSCVAO, glSCEBO; // Buffers for main scene square
@@ -72,6 +72,7 @@ GLuint glBufferDShaderFramebufferTexture;
 
 // >> Scene related
 BOOL   scFullscreen     = FALSE;       // Indicates if scene is fullscreen (Full desktop space)
+int    scDisplayID      = 0;           // Contains ID of the display that is currently used as render display 
 BOOL   scPaused         = FALSE;       // Indicates if rendering is paused
 double scPauseTimestamp = 0;           // Holds timestamp of the pause
 double scTimestamp      = 0;           // Holds timestamp of the previous frame
@@ -805,6 +806,343 @@ LONG WINAPI trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 					scFPSMode = 120;
 					return TRUE;
 				}
+
+				case ID_SYSTRAYMENU_FULLSCREEN: {
+					appLockRequested = TRUE;
+					renderMutex.lock();
+
+					if (scFullscreen) {
+
+						// Rescan displays because user may reconnect them
+						enumerateDisplays();
+
+						// Check if there is > 0 displays
+						if (displays.size() == 0) {
+							MessageBoxA(
+								NULL,
+								"Can not display shader decause no displays found on the system",
+								"Display not found",
+								MB_ICONERROR | MB_OK
+							);
+
+							appLockRequested = FALSE;
+							renderMutex.unlock();
+
+							return TRUE;
+						}
+
+						// Ensure no out of bounds
+						if (scDisplayID >= displays.size())
+							scDisplayID = displays.size() - 1;
+
+						currentWindowDimensions = displays[scDisplayID];
+						
+						// Window size & location
+						MoveWindow(glWindow, currentWindowDimensions.left, currentWindowDimensions.top, currentWindowDimensions.right - currentWindowDimensions.left, currentWindowDimensions.bottom - currentWindowDimensions.top, TRUE);
+
+						// GL size
+						glWidth = currentWindowDimensions.right - currentWindowDimensions.left;
+						glHeight = currentWindowDimensions.bottom - currentWindowDimensions.top;
+
+						resizeSC();
+						
+						// Update flag (obviously)
+						scFullscreen = FALSE;
+
+					} else {
+
+						// Rescan displays because user may reconnect them
+						enumerateDisplays();
+
+						// Check if there is > 0 displays
+						if (displays.size() == 0) {
+							MessageBoxA(
+								NULL,
+								"Can not display shader decause no displays found on the system",
+								"Display not found",
+								MB_ICONERROR | MB_OK
+							);
+
+							appLockRequested = FALSE;
+							renderMutex.unlock();
+
+							return TRUE;
+						}
+
+						currentWindowDimensions = fullViewportSize;
+
+						// Window size & location
+						MoveWindow(glWindow, currentWindowDimensions.left, currentWindowDimensions.top, currentWindowDimensions.right - currentWindowDimensions.left, currentWindowDimensions.bottom - currentWindowDimensions.top, TRUE);
+
+						// GL size
+						glWidth = currentWindowDimensions.right - currentWindowDimensions.left;
+						glHeight = currentWindowDimensions.bottom - currentWindowDimensions.top;
+
+						resizeSC();
+
+						// Update flag (obviously)
+						scFullscreen = TRUE;
+					}
+
+					appLockRequested = FALSE;
+					renderMutex.unlock();
+					return TRUE;
+				}
+
+				case ID_SYSTRAYMENU_MOVETONEXTDISPLAY: {
+					// Save me from a little duck constantly watching me
+					appLockRequested = TRUE;
+					renderMutex.lock();
+
+					if (scFullscreen) {
+
+						// Always return to the same display
+						// Rescan displays because user may reconnect them
+						enumerateDisplays();
+
+						// Check if there is > 0 displays
+						if (displays.size() == 0) {
+							MessageBoxA(
+								NULL,
+								"Can not display shader decause no displays found on the system",
+								"Display not found",
+								MB_ICONERROR | MB_OK
+							);
+
+							appLockRequested = FALSE;
+							renderMutex.unlock();
+
+							return TRUE;
+						}
+
+						// Ensure no out of bounds
+						if (scDisplayID >= displays.size())
+							scDisplayID = displays.size() - 1;
+
+						currentWindowDimensions = displays[scDisplayID];
+
+						// Window size & location
+						MoveWindow(glWindow, currentWindowDimensions.left, currentWindowDimensions.top, currentWindowDimensions.right - currentWindowDimensions.left, currentWindowDimensions.bottom - currentWindowDimensions.top, TRUE);
+
+						// GL size
+						glWidth = currentWindowDimensions.right - currentWindowDimensions.left;
+						glHeight = currentWindowDimensions.bottom - currentWindowDimensions.top;
+
+						resizeSC();
+
+						// Update flag (obviously)
+						scFullscreen = FALSE;
+
+					} else {
+
+						// Rescan displays because user may reconnect them
+						enumerateDisplays();
+
+						// Shift display
+						++scDisplayID;
+
+						// Check if there is > 0 displays
+						if (displays.size() == 0) {
+							MessageBoxA(
+								NULL,
+								"Can not display shader decause no displays found on the system",
+								"Display not found",
+								MB_ICONERROR | MB_OK
+							);
+
+							appLockRequested = FALSE;
+							renderMutex.unlock();
+
+							return TRUE;
+						}
+
+						// Ensure no out of bounds, loop displays
+						if (scDisplayID >= displays.size())
+							scDisplayID = 0;
+
+						currentWindowDimensions = displays[scDisplayID];
+
+						// Window size & location
+						MoveWindow(glWindow, currentWindowDimensions.left, currentWindowDimensions.top, currentWindowDimensions.right - currentWindowDimensions.left, currentWindowDimensions.bottom - currentWindowDimensions.top, TRUE);
+
+						// GL size
+						glWidth = currentWindowDimensions.right - currentWindowDimensions.left;
+						glHeight = currentWindowDimensions.bottom - currentWindowDimensions.top;
+
+						resizeSC();
+
+						// Update flag (obviously)
+						scFullscreen = FALSE;
+					}
+
+					appLockRequested = FALSE;
+					renderMutex.unlock();
+					return TRUE;
+				}
+
+				case ID_SYSTRAYMENU_MOVETOPREVDISPLAY: {
+					// Save me from a little duck constantly watching me
+					appLockRequested = TRUE;
+					renderMutex.lock();
+
+					if (scFullscreen) {
+
+						// Always return to the same display
+						// Rescan displays because user may reconnect them
+						enumerateDisplays();
+
+						// Check if there is > 0 displays
+						if (displays.size() == 0) {
+							MessageBoxA(
+								NULL,
+								"Can not display shader decause no displays found on the system",
+								"Display not found",
+								MB_ICONERROR | MB_OK
+							);
+
+							appLockRequested = FALSE;
+							renderMutex.unlock();
+
+							return TRUE;
+						}
+
+						// Ensure no out of bounds
+						if (scDisplayID >= displays.size())
+							scDisplayID = displays.size() - 1;
+
+						currentWindowDimensions = displays[scDisplayID];
+
+						// Window size & location
+						MoveWindow(glWindow, currentWindowDimensions.left, currentWindowDimensions.top, currentWindowDimensions.right - currentWindowDimensions.left, currentWindowDimensions.bottom - currentWindowDimensions.top, TRUE);
+
+						// GL size
+						glWidth = currentWindowDimensions.right - currentWindowDimensions.left;
+						glHeight = currentWindowDimensions.bottom - currentWindowDimensions.top;
+
+						resizeSC();
+
+						// Update flag (obviously)
+						scFullscreen = FALSE;
+
+					} else {
+
+						// Rescan displays because user may reconnect them
+						enumerateDisplays();
+
+						// Shift display
+						--scDisplayID;
+
+						// Check if there is > 0 displays
+						if (displays.size() == 0) {
+							MessageBoxA(
+								NULL,
+								"Can not display shader decause no displays found on the system",
+								"Display not found",
+								MB_ICONERROR | MB_OK
+							);
+
+							appLockRequested = FALSE;
+							renderMutex.unlock();
+
+							return TRUE;
+						}
+
+						// Ensure no out of bounds, loop displays
+						if (scDisplayID < 0)
+							scDisplayID = displays.size() - 1;
+						
+						if (scDisplayID >= displays.size())
+							scDisplayID = displays.size() - 1;
+
+						currentWindowDimensions = displays[scDisplayID];
+
+						// Window size & location
+						MoveWindow(glWindow, currentWindowDimensions.left, currentWindowDimensions.top, currentWindowDimensions.right - currentWindowDimensions.left, currentWindowDimensions.bottom - currentWindowDimensions.top, TRUE);
+
+						// GL size
+						glWidth = currentWindowDimensions.right - currentWindowDimensions.left;
+						glHeight = currentWindowDimensions.bottom - currentWindowDimensions.top;
+
+						resizeSC();
+
+						// Update flag (obviously)
+						scFullscreen = FALSE;
+					}
+
+					appLockRequested = FALSE;
+					renderMutex.unlock();
+					return TRUE;
+				}
+
+				case ID_SYSTRAYMENU_RESCAN_DISPLAYS: {
+					appLockRequested = TRUE;
+					renderMutex.lock();
+
+					// Rescan displays because user may reconnect them
+					enumerateDisplays();
+
+					// Check if there is > 0 displays
+					if (displays.size() == 0) {
+						MessageBoxA(
+							NULL,
+							"Can not display shader decause no displays found on the system",
+							"Display not found",
+							MB_ICONERROR | MB_OK
+						);
+
+						appLockRequested = FALSE;
+						renderMutex.unlock();
+
+						return TRUE;
+					}
+
+					if (scFullscreen) {
+
+						currentWindowDimensions = fullViewportSize;
+
+						// Window size & location
+						MoveWindow(glWindow, currentWindowDimensions.left, currentWindowDimensions.top, currentWindowDimensions.right - currentWindowDimensions.left, currentWindowDimensions.bottom - currentWindowDimensions.top, TRUE);
+
+						// GL size
+						int nglWidth = currentWindowDimensions.right - currentWindowDimensions.left;
+						int nglHeight = currentWindowDimensions.bottom - currentWindowDimensions.top;
+
+						// Resize context and textures only if there is a size mismatch
+						if (nglWidth != glWidth || nglHeight != glHeight) {
+							glWidth = nglWidth;
+							glHeight = nglHeight;
+
+							resizeSC();
+						}
+
+					} else {
+
+						// Ensure no out of bounds, loop displays
+						if (scDisplayID >= displays.size())
+							scDisplayID = 0;
+
+						currentWindowDimensions = displays[scDisplayID];
+
+						// Window size & location
+						MoveWindow(glWindow, currentWindowDimensions.left, currentWindowDimensions.top, currentWindowDimensions.right - currentWindowDimensions.left, currentWindowDimensions.bottom - currentWindowDimensions.top, TRUE);
+
+						// GL size
+						int nglWidth = currentWindowDimensions.right - currentWindowDimensions.left;
+						int nglHeight = currentWindowDimensions.bottom - currentWindowDimensions.top;
+
+						// Resize context and textures only if there is a size mismatch
+						if (nglWidth != glWidth || nglHeight != glHeight) {
+							glWidth = nglWidth;
+							glHeight = nglHeight;
+
+							resizeSC();
+						}
+					}
+
+					appLockRequested = FALSE;
+					renderMutex.unlock();
+					return TRUE;
+				}
 				
 				default:
 					return DefWindowProc(hWnd, wmId, wParam, lParam);
@@ -877,7 +1215,29 @@ int createTrayMenu(_In_ HINSTANCE hInstance) {
 
 // Desktop window event dispatcher
 LONG WINAPI desktopWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-	return DefWindowProc(hWnd, uMsg, wParam, lParam);
+	switch (uMsg) {
+		case WM_SIZE: {
+			// Do nothing, resized on menu item click inside mutex lock context
+			return TRUE;
+		}
+
+		// IDK what it does, lol
+		case WM_PALETTECHANGED:
+			if (hWnd == (HWND) wParam)
+				break;
+
+		case WM_QUERYNEWPALETTE:
+			if (glPalette) {
+				UnrealizeObject(glPalette);
+				SelectPalette(glDevice, glPalette, FALSE);
+				RealizePalette(glDevice);
+				return TRUE;
+			}
+			return TRUE;
+
+		default:
+			return DefWindowProc(hWnd, uMsg, wParam, lParam);
+	}
 }
 
 // Initializes the GL window with context and cookies
@@ -949,6 +1309,7 @@ int createDesktopWindow(_In_ HINSTANCE hInstance) {
 		return 1;
 	}
 
+	// This cake is not real
 	DescribePixelFormat(glDevice, pf, sizeof(PIXELFORMATDESCRIPTOR), &pfd);
 
 	if (pfd.dwFlags & PFD_NEED_PALETTE || pfd.iPixelType == PFD_TYPE_COLORINDEX) {
