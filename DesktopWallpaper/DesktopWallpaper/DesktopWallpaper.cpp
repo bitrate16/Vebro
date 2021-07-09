@@ -399,6 +399,9 @@ void renderSC() {
 				if (!GetCursorPos(&currentMouse))
 					currentMouse = { 0, 0 };
 
+				// TODO: Compute mouse relative to each display in case of single screen
+				currentMouse.y = currentWindowDimensions.bottom + currentWindowDimensions.top - currentMouse.y;
+
 				glUniform4f(glGetUniformLocation(glMainShaderProgramID, "iMouse"), (GLfloat) currentMouse.x, (GLfloat) currentMouse.y, (GLfloat) scMouse.x, (GLfloat) scMouse.y);
 
 				scMouse.x = currentMouse.x;
@@ -1606,13 +1609,16 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 	// DEBUG: Load sample shader and run
 #ifdef DEBUG_LOAD_SHADER_FROM_FILE
 	glDebugOutput = TRUE;
-	ShaderCompilationStatus compilationStatus = compileShader(defaultShader); // compileShaderFromFile("shader.glsl");
+
+	ShaderCompilationStatus compilationStatus = compileShaderFromFile("shader.glsl"); // compileShader(defaultShader); // compileShaderFromFile("shader.glsl");
+
 	if (!compilationStatus.success) {
 		std::wcout << "You're debugging the thing that doesn't work" << std::endl;
 		system("PAUSE");
 	}  else
 		glMainShaderProgramID = compilationStatus.shaderID;
 
+	scMouseEnabled = TRUE;
 	// scPaused = TRUE;
 #endif
 
