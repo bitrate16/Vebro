@@ -20,6 +20,7 @@
 #include <iomanip>
 #include <sstream>
 #include <fstream>
+#include <streambuf>
 #include <io.h>
 #include <fcntl.h>
 #include <chrono>
