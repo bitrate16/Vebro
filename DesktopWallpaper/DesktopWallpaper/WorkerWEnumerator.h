@@ -27,7 +27,7 @@ namespace WorkerWEnumerator {
 			std::wcout << std::flush;
 
 			enumLevel++;
-			EnumChildWindows(hWnd, EnumWindowsPrint, 0);
+			EnumChildWindows(hWnd, (WNDENUMPROC) EnumWindowsPrint, 0);
 			enumLevel--;
 		}
 		return TRUE;
@@ -58,7 +58,7 @@ namespace WorkerWEnumerator {
 		EnumWindows(EnumWindowsPrint, 0);
 #endif
 
-		EnumWindows(EnumWindowsWorker, 0);
+		EnumWindows((WNDENUMPROC) EnumWindowsWorker, 0);
 
 		return workerw;
 	}

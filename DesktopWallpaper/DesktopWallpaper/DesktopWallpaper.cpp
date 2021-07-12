@@ -28,43 +28,38 @@ int      glHeight;
 BOOL     glDebugOutput = FALSE;
 
 // >> OpenGL related
-struct GLInput {
-	// Determines type of the input
-	char type;
-	// Defines binding to the used texture / buffer
-	GLuint bind = -1;
-	// Defines additional data needed (For example audio track information / video information / e.t.c)
-};
-
 // Buffers for viewport coords
 GLuint glSquareVAO;
 GLuint glSquareVBO;
 GLuint glSquareEBO;
 
 // Shaders (if exists)
-GLuint glMainShaderProgramID = -1;    // Main shader program ID
-GLuint glBufferAShaderProgramID = -1; // Buffer A shader program ID
-GLuint glBufferBShaderProgramID = -1; // Buffer B shader program ID
-GLuint glBufferCShaderProgramID = -1; // Buffer C shader program ID
-GLuint glBufferDShaderProgramID = -1; // Buffer D shader program ID
+GLuint glMainShaderProgramID = -1;   // Main shader program ID
+const char* glMainShaderPath = NULL; // Path to the main shader (For support reload button)
+
+// Value == -1 indicates that shader sould not be rendered
+GLuint glBufferShaderProgramIDs[4] = { -1, -1, -1, -1 };        // Buffer i shader program (A / B / C / D)
+const char* glBufferShaderPath[4] = { NULL, NULL, NULL, NULL }; // Path to the Buffer i shader (For support reload button)
 
 // Framebuffers for these shaders
-GLuint glMainShaderFramebuffer;
-GLuint glBufferAShaderFramebuffer;
-GLuint glBufferBShaderFramebuffer;
-GLuint glBufferCShaderFramebuffer;
-GLuint glBufferDShaderFramebuffer;
+GLuint glBufferShaderFramebuffers[4];
 
 // Textures to render in.
 //  This textures will exist till the end of the program because they 
 //   are used as temp variables storing buffer output for the next frame 
 //   and can be used as input even if shader for this buffer (A / B / C / D) 
 //   was removed.
-GLuint glMainShaderFramebufferTexture;
-GLuint glBufferAShaderFramebufferTexture;
-GLuint glBufferBShaderFramebufferTexture;
-GLuint glBufferCShaderFramebufferTexture;
-GLuint glBufferDShaderFramebufferTexture;
+GLuint glBufferShaderFramebufferTextures[4];
+
+// Indicates if buffer[i] should be rendered
+// Changed view resource control
+// Render requires (glBufferShaderShouldBeRendered[i] && glBufferShaderProgramIDs[i] != -1)
+//  to be true in order to render the shader because shader can be 
+//  loaded but not rendered (in this case it is only compiled and not used) or 
+//  rendered but not loaded (in this case buffer texture of shader is rendered, but code is not compiled).
+// Shader code can be unloaded by Remove button in menu.
+// Shader as input can be disabled by removing it manually from inputs.
+BOOL glBufferShaderShouldBeRendered[4] = { FALSE, FALSE, FALSE, FALSE };
 
 
 // >> Scene related
@@ -80,11 +75,343 @@ int    scMinFrameTime   = 1000 / 30;   // Holds minimal frame time in ms (1000 /
 int    scFPSMode        = 30;          // Just defines the FPS used
 BOOL   scSoundEnabled   = FALSE;       // Indicates if sound capture enabled / disabled. Used to force disable sound capture if shader uses audio input
 
+// ID's for all shader inputs
+// Should only be changed via special functions to correctly process GC
+int scMainShaderInputs[4] = { -1, -1, -1, -1 };
+int scBufferShaderInputs[4][4] = { { -1, -1, -1, -1 }, { -1, -1, -1, -1 }, { -1, -1, -1, -1 }, { -1, -1, -1, -1 } };
+
+
 // >> Threading related
 std::thread*                          renderThread = nullptr;   // Thread for rendering the wallpaper
 std::mutex                            renderMutex;              // Captured on each draw frame
 BOOL                                  appExiting = FALSE;       // Indicates if application exits
 BOOL                                  appLockRequested = FALSE; // indicates if main thread wants to acquire lock
+
+
+// >> Resources related
+// Resource type
+// Buffer : id (A / B / C / D)
+// Image : path, GLuint bind (image texture)
+// Video : path, GLuint bind (current frame as texture), specific media data
+// Audio : path, GLuint bind (current FFT as texture), specific media data
+// Webcam : GLuint bind (current frame as texture)
+// Microphone : GLuint (current FFT as texture)
+enum ResourceType {
+	IMAGE_TEXTURE, // Simple image as input
+	AUDIO_TEXTURE, // Audio file as input
+	VIDEO_TEXTURE, // Video file as input
+	MIC_TEXTURE,   // Microphone as inout
+	WEB_TEXTURE,   // Webcam as input
+	FRAME_BUFFER   // Buffer A / B / C / D as input
+};
+
+// Resource unit
+struct SCResource {
+
+	// Resource references amount (auto GC)
+	long refs = 0;
+
+	// Resource type
+	ResourceType type;
+
+	// Bind for texture (id exists for this unit)
+	GLuint bind = 0;
+
+	// ID number of buffer (only for buffer input)
+	char buffer_id = 0;
+
+	// Absolute path of resource (used to determine duplications)
+	char* path;
+};
+
+// Resource storage table (used to prevent reduplications of loading and processing)
+// Storas static fixed amount of resources matching the total amount of inputs for all shaders
+// Allows deletion of any element and insertion into any free cell
+struct ResourceTableEntry {
+	BOOL empty = TRUE;
+	SCResource resource;
+};
+
+// 4 main inputs + 4 buffers * 4 inputs
+const int ResourceTableSize = 4 + 4 * 4;
+
+ResourceTableEntry scResources[ResourceTableSize];
+
+// Finds the specified resource and returns it's ID on success
+int findResource(SCResource res) {
+	for (size_t i = 0; i < ResourceTableSize; ++i) {
+		if (scResources[i].empty)
+			continue;
+
+		if (res.type == scResources[i].resource.type) {
+			switch (res.type) {
+				case IMAGE_TEXTURE: {
+					if (strcmp(res.path, scResources[i].resource.path) == 0)
+						return i;
+					return -1;
+				}
+
+				case AUDIO_TEXTURE: {
+					if (strcmp(res.path, scResources[i].resource.path) == 0)
+						return i;
+					return -1;
+				}
+
+				case VIDEO_TEXTURE: {
+					if (strcmp(res.path, scResources[i].resource.path) == 0)
+						return i;
+					return -1;
+				}
+
+				case MIC_TEXTURE:
+				case WEB_TEXTURE: {
+					return -1;
+				}
+
+				case FRAME_BUFFER: {
+					if (res.buffer_id == scResources[i].resource.buffer_id)
+						return i;
+					return -1;
+				}
+			}
+		}
+	}
+
+	return -1;
+}
+
+// Load and initialize the desired resource
+// Returns ResourceID as index in scResources or -1
+int loadResource(SCResource res) {
+
+	int resID = findResource(res);
+
+	if (resID != -1) {
+		++scResources[resID].resource.refs;
+		return resID;
+	}
+
+	// Called once when initially loading resource:
+	switch (res.type) {
+		case IMAGE_TEXTURE: { // TODO: Load media resources
+			return -1;
+		}
+
+		case AUDIO_TEXTURE: {
+			return -1;
+		}
+
+		case VIDEO_TEXTURE: {
+			return -1;
+		}
+
+		case MIC_TEXTURE: {
+			return -1;
+		}
+
+		case WEB_TEXTURE: {
+			return -1;
+		}
+
+		case FRAME_BUFFER: {
+			++res.refs;
+
+			glBufferShaderShouldBeRendered[res.buffer_id] = TRUE;
+
+			// Insert into first free cell
+			for (int i = 0; i < ResourceTableSize; ++i)
+				if (scResources[i].empty) {
+					scResources[i].empty = FALSE;
+					scResources[i].resource = res;
+					return i;
+				}
+
+			std::wcout << "Can not insert resource, resource table is corrupted" << std::endl;
+			return -1;
+		}
+	}
+
+	return -1;
+}
+
+// Unloads the resource with given ID
+// If resource is used somewhere, it's refs count decreased, else it is completely disposed.
+void unloadResource(int resID) {
+	
+	if (scResources[resID].empty) {
+		std::wcout << "Can not unload empty resource, resource table is corrupted" << std::endl;
+		return;
+	}
+
+	// Check if references > 0
+	if (scResources[resID].resource.refs > 1) {
+		--scResources[resID].resource.refs;
+		return;
+	}
+
+	if (scResources[resID].resource.refs <= 0) {
+		std::wcout << "Can not unload unreferenced resource, resource table is corrupted" << std::endl;
+		return;
+	}
+	
+	// In other case unload the resource
+	scResources[resID].empty = TRUE;
+
+	// Called once when finally disposing resource:
+	switch (scResources[resID].resource.type) {
+		case IMAGE_TEXTURE: { // TODO: Unload media resources
+			return;
+		}
+
+		case AUDIO_TEXTURE: {
+			return;
+		}
+
+		case VIDEO_TEXTURE: {
+			return;
+		}
+
+		case MIC_TEXTURE: {
+			return;
+		}
+
+		case WEB_TEXTURE: {
+			return;
+		}
+
+		case FRAME_BUFFER: {
+			glBufferShaderShouldBeRendered[scResources[resID].resource.buffer_id] = FALSE;
+			return;
+		}
+	}
+}
+
+// Performs reloading of all resources
+// Returns 0 on success, 1 else
+BOOL reloadResources() {
+	for (size_t i = 0; i < ResourceTableSize; ++i) {
+		if (scResources[i].empty)
+			continue;
+
+		switch (scResources[i].resource.type) {
+			case IMAGE_TEXTURE: { // TODO: Reload media resources
+				break;
+			}
+
+			case AUDIO_TEXTURE: {
+				break;
+			}
+
+			case VIDEO_TEXTURE: {
+				break;
+			}
+
+			case MIC_TEXTURE: {
+				break;
+			}
+
+			case WEB_TEXTURE: {
+				break;
+			}
+
+			case FRAME_BUFFER: {
+				break;
+			}
+		}
+	}
+
+	return 0;
+}
+
+// Unloads all resources
+void unloadResources() {
+	for (size_t i = 0; i < ResourceTableSize; ++i) {
+		if (scResources[i].empty)
+			continue;
+
+		switch (scResources[i].resource.type) {
+			case IMAGE_TEXTURE: { // TODO: Unload media resources
+				break;
+			}
+
+			case AUDIO_TEXTURE: {
+				break;
+			}
+
+			case VIDEO_TEXTURE: {
+				break;
+			}
+
+			case MIC_TEXTURE: {
+				break;
+			}
+
+			case WEB_TEXTURE: {
+				break;
+			}
+
+			case FRAME_BUFFER: {
+				break;
+			}
+		}
+
+		scResources[i].empty = TRUE;
+	}
+}
+
+// Performs load of main shader resource
+// Warning: Path should be absolute
+// Returns 0 on success, 1 else
+BOOL loadMainShaderResource(SCResource res, int inputID) {
+
+	// If main input is bound to some resource, reload this resource
+	// Optionally check if target resource is loaded in this input and cancel load
+	if (scMainShaderInputs[inputID] != -1) {
+
+		int resID = findResource(res);
+
+		// Do not relod the resource
+		if (resID == scMainShaderInputs[inputID])
+			return 0;
+
+		// If resource does not exist or is not bound to this input, unload it
+		unloadResource(scMainShaderInputs[inputID]);
+		scMainShaderInputs[inputID] = -1;
+	}
+
+	scMainShaderInputs[inputID] = loadResource(res);
+	return scMainShaderInputs[inputID] == -1;
+}
+
+// Performs load of main shader resource
+// Warning: Path should be absolute
+// Returns 0 on success, 1 else
+BOOL loadBufferShaderResource(SCResource res, int bufferID, int inputID) {
+
+	if (bufferID < 0 || bufferID > 3) {
+		std::wcout << "Can not load resource for Buffer " << bufferID << ", Buffer does not exist, bufferID corrupt" << std::endl;
+		return 1;
+	}
+
+	// If main input is bound to some resource, reload this resource
+	// Optionally check if target resource is loaded in this input and cancel load
+	if (scBufferShaderInputs[bufferID][inputID] != -1) {
+
+		int resID = findResource(res);
+
+		// Do not relod the resource
+		if (resID == scBufferShaderInputs[bufferID][inputID])
+			return 0;
+
+		// If resource does not exist or is not bound to this input, unload it
+		unloadResource(scBufferShaderInputs[bufferID][inputID]);
+		scBufferShaderInputs[bufferID][inputID] = -1;
+	}
+
+	scBufferShaderInputs[bufferID][inputID] = loadResource(res);
+	return scBufferShaderInputs[bufferID][inputID] == -1;
+}
+
 
 // TODO:
 // System sound source picker
@@ -103,6 +430,7 @@ struct ShaderCompilationStatus {
 };
 
 // Compiles fragment shader and returns shader program ID
+// Debug only
 ShaderCompilationStatus compileShader(const char* fragmentSource) {
 
 	// Default Vertex shader
@@ -201,6 +529,128 @@ ShaderCompilationStatus compileShaderFromFile(const char* path) {
 	return compileShader(str.c_str());
 }
 
+// Loads Main shader from file, saves path
+// Returns 0 on success, 1 else
+BOOL loadMainShaderFromFile(const char* path) {
+	
+	// Set path for main shader
+	glMainShaderPath = path;
+	
+	// Delete previous shader program
+	if (glMainShaderProgramID != -1)
+		glDeleteProgram(glMainShaderProgramID);
+
+	glMainShaderProgramID = -1;
+
+	ShaderCompilationStatus shaderResult = compileShaderFromFile(glMainShaderPath);
+	if (shaderResult.success) {
+		glMainShaderProgramID = shaderResult.shaderID;
+		return 0;
+	}
+
+	return 1;
+}
+
+// Reloads Main shader from saved path
+// Returns 0 on success, 1 else
+BOOL reloadMainShader() {
+
+	if (glMainShaderProgramID == -1) { // Not loaded, ignore
+		return 0;
+	} else if (glMainShaderPath == NULL) { // Loaded, but no path -> corrupt
+		std::wcout << "Can not load Main shader, Shader path corrupt" << std::endl;
+		return 1;
+	}
+
+	// Delete previous shader program
+	if (glMainShaderProgramID != -1)
+		glDeleteProgram(glMainShaderProgramID);
+
+	glMainShaderProgramID = -1;
+
+	ShaderCompilationStatus shaderResult = compileShaderFromFile(glMainShaderPath);
+	if (shaderResult.success) {
+		glMainShaderProgramID = shaderResult.shaderID;
+		return 0;
+	}
+
+	return 1;
+}
+
+// Unloads Main shader from saved path
+void unloadMainShader() {
+	if (glMainShaderProgramID != -1)
+		glDeleteProgram(glMainShaderProgramID);
+
+	glMainShaderPath = NULL;
+}
+
+// Loads Buffer i shader from file, saves path
+// Returns 0 on success, 1 else
+BOOL loadBufferShaderFromFile(const char* path, int buffer_id) {
+
+	if (buffer_id < 0 || buffer_id > 3) {
+		std::wcout << "Can not load Shader for Buffer " << buffer_id << ", Buffer does not exist, buffer_id corrupt" << std::endl;
+		return 1;
+	}
+
+	// Set path for main shader
+	glBufferShaderPath[buffer_id] = path;
+
+	// Delete previous shader program
+	if (glBufferShaderProgramIDs[buffer_id] != -1)
+		glDeleteProgram(glBufferShaderProgramIDs[buffer_id]);
+
+	glBufferShaderProgramIDs[buffer_id] = -1;
+
+	ShaderCompilationStatus shaderResult = compileShaderFromFile(glBufferShaderPath[buffer_id]);
+	if (shaderResult.success) {
+		glBufferShaderProgramIDs[buffer_id] = shaderResult.shaderID;
+		return 0;
+	}
+
+	return 1;
+}
+
+// Loads Buffer i shader from saved path
+// Returns 0 on success, 1 else
+BOOL reloadBufferShaderFromFile(int buffer_id) {
+
+	if (buffer_id < 0 || buffer_id > 3) {
+		std::wcout << "Can not reload Shader for Buffer " << buffer_id << ", Buffer does not exist, buffer_id corrupt" << std::endl;
+		return 1;
+	}
+
+	if (glBufferShaderProgramIDs[buffer_id] == -1) { // Not loaded, ignore
+		return 0;
+	} else if (glBufferShaderPath[buffer_id] == NULL) { // Loaded, but no path -> corrupt
+		std::wcout << "Can not reload Shader for Buffer " << ("ABCD"[buffer_id]) << ", Shader path corrupt" << std::endl;
+		return 1;
+	}
+
+	// Delete previous shader program
+	if (glBufferShaderProgramIDs[buffer_id] != -1)
+		glDeleteProgram(glBufferShaderProgramIDs[buffer_id]);
+
+	glBufferShaderProgramIDs[buffer_id] = -1;
+
+	ShaderCompilationStatus shaderResult = compileShaderFromFile(glBufferShaderPath[buffer_id]);
+	if (shaderResult.success) {
+		glBufferShaderProgramIDs[buffer_id] = shaderResult.shaderID;
+		return 0;
+	}
+
+	return 1;
+}
+
+// Unloads Main shader from saved path
+void unloadBufferShader(int buffer_id) {
+	if (glBufferShaderProgramIDs[buffer_id] != -1)
+		glDeleteProgram(glBufferShaderProgramIDs[buffer_id]);
+
+	glBufferShaderPath[buffer_id] = NULL;
+}
+
 
 // Initialize the OpenGL scene
 void initSC() {
@@ -246,6 +696,26 @@ void initSC() {
 
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 	glBindVertexArray(0);
+
+
+	// Create buffer and texture for all buffers (4 in total)
+	glGenFramebuffers(4, glBufferShaderFramebuffers);
+	glGenTextures(4, glBufferShaderFramebufferTextures);
+
+	for (int i = 0; i < 4; ++i) {
+		glBindFramebuffer(GL_FRAMEBUFFER, glBufferShaderFramebuffers[0]);
+
+		glBindTexture(GL_TEXTURE_2D, glBufferShaderFramebufferTextures[0]);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, glWidth, glHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
+
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+
+		glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, glBufferShaderFramebufferTextures[i], 0);
+	}
+
+	glBindTexture(GL_TEXTURE_2D, 0);
+	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
 
 	// Generate framebuffers & framebuffer texture for main shader
 	// TODO: remove this test conditions
@@ -369,7 +839,13 @@ void resizeSC() {
 
 	glViewport(0, 0, glWidth, glHeight);
 
-	// TODO: Resize all buffer textures
+	// Resize all buffer textures
+	for (int i = 0; i < 4; ++i) {
+		glBindTexture(GL_TEXTURE_2D, glBufferShaderFramebufferTextures[0]);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, glWidth, glHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
+	}
+
+	glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 // Render single frame of the Scene
@@ -399,7 +875,9 @@ void renderSC() {
 				if (!GetCursorPos(&currentMouse))
 					currentMouse = { 0, 0 };
 
-				// TODO: Compute mouse relative to each display in case of single screen
+				// Compute mouse relative to each display in case of single screen
+				currentMouse.x -= currentWindowDimensions.left;
+				currentMouse.y -= currentWindowDimensions.top;
 				currentMouse.y = currentWindowDimensions.bottom + currentWindowDimensions.top - currentMouse.y;
 
 				glUniform4f(glGetUniformLocation(glMainShaderProgramID, "iMouse"), (GLfloat) currentMouse.x, (GLfloat) currentMouse.y, (GLfloat) scMouse.x, (GLfloat) scMouse.y);
@@ -539,16 +1017,11 @@ void dispose() {
 	wglMakeCurrent(glDevice, glContext);
 
 	// Unlink all shaders
-	if (glMainShaderProgramID != -1)
-		glDeleteProgram(glMainShaderProgramID);
-	if (glBufferAShaderProgramID != -1)
-		glDeleteProgram(glBufferAShaderProgramID);
-	if (glBufferBShaderProgramID != -1)
-		glDeleteProgram(glBufferBShaderProgramID);
-	if (glBufferCShaderProgramID != -1)
-		glDeleteProgram(glBufferCShaderProgramID);
-	if (glBufferDShaderProgramID != -1)
-		glDeleteProgram(glBufferDShaderProgramID);
+	unloadMainShader();
+
+	for (int i = 0; i < 4; ++i)
+		if (glBufferShaderProgramIDs[i] != -1)
+			glDeleteProgram(glBufferShaderProgramIDs[i]);
 
 	// TODO: Unlink all resources
 
@@ -643,7 +1116,7 @@ void enumerateDisplays() {
 
 
 // Tray window event dispatcher
-LONG WINAPI trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) { // TODO: Accelerators &
+LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) { // TODO: Accelerators &
 	// Main Tray menu
 	HMENU trayMainMenu;
 	// Tray menu for FPS selection
@@ -1317,7 +1790,7 @@ int createTrayMenu(_In_ HINSTANCE hInstance) {
 
 	wcex.cbSize = sizeof(WNDCLASSEX);
 	wcex.style = CS_HREDRAW | CS_VREDRAW;
-	wcex.lpfnWndProc = trayWindowProc;
+	wcex.lpfnWndProc = (WNDPROC) trayWindowProc;
 	wcex.cbClsExtra = 0;
 	wcex.cbWndExtra = 0;
 	wcex.hInstance = hInstance;
@@ -1362,7 +1835,7 @@ int createTrayMenu(_In_ HINSTANCE hInstance) {
 
 
 // Desktop window event dispatcher
-LONG WINAPI desktopWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+LRESULT CALLBACK desktopWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	switch (uMsg) {
 		//case WM_PAINT: {
 		//	// Prevent ignoring of paint event because GL implicitly forces window to repaint
@@ -1577,6 +2050,8 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 
 	// Debug: Display console window
 #ifdef DEBUG_DISPLAY_CONSOLE_WINDOW
+	// TODO: Commandline parameter to open with console
+	// TODO: Prevent console closing exiting app https://stackoverflow.com/questions/20232685/how-can-i-prevent-my-program-from-closing-when-a-open-console-window-is-closed
 		AllocConsole();
 		FILE* reo = freopen("CONOUT$", "w+", stdout);
 #endif
@@ -1620,6 +2095,17 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 
 	scMouseEnabled = TRUE;
 	// scPaused = TRUE;
+
+	// Move to second display
+	currentWindowDimensions = displays[scDisplayID = 1];
+
+	// Window size & location
+	MoveWindow(glWindow, currentWindowDimensions.left, currentWindowDimensions.top, currentWindowDimensions.right - currentWindowDimensions.left, currentWindowDimensions.bottom - currentWindowDimensions.top, TRUE);
+
+	// GL size
+	glWidth = currentWindowDimensions.right - currentWindowDimensions.left;
+	glHeight = currentWindowDimensions.bottom - currentWindowDimensions.top;
+
 #endif
 
 	// Release OpenGL context for this thread

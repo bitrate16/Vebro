@@ -1,7 +1,7 @@
-.vs*
+DesktopWallpaper/DesktopWallpaper/Win32*
+DesktopWallpaper/DesktopWallpaper/x64*
 
-DesktopWallpaper/Debug*
-DesktopWallpaper/Release*
-DesktopWallpaper/DesktopWallpaper/Debug*
-DesktopWallpaper/DesktopWallpaper/Release*
-Sample App*
+DesktopWallpaper/Win32*
+DesktopWallpaper/x64*
+
+DesktopWallpaper/.vs*

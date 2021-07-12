@@ -37,7 +37,7 @@
 #define ID_SYSTRAYMENU_BUFFER_C_SHADER         40018
 #define ID_SYSTRAYMENU_BUFFER_D_SHADER         40019
 
-#define ID_SYSTRAYMENU_DEBUG_WARNINGS          40020
+#define ID_SYSTRAYMENU_DEBUG_WARNINGS          40020 // TODO: Split into "Enable debug console output" and "Enable GL error messages"
 #define ID_SYSTRAYMENU_EXIT                    40021
 
 // With gap
