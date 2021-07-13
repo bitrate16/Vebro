@@ -96,6 +96,7 @@ BOOL                                  appLockRequested = FALSE; // indicates if 
 // Audio : path, GLuint bind (current FFT as texture), specific media data
 // Webcam : GLuint bind (current frame as texture)
 // Microphone : GLuint (current FFT as texture)
+// TODO: Keyboard Input, Cubemap input
 enum ResourceType {
 	IMAGE_TEXTURE, // Simple image as input
 	AUDIO_TEXTURE, // Audio file as input
@@ -663,7 +664,6 @@ void initSC() {
 	scTimestamp = 0.0;
 	scFrames = 0;
 
-
 	// Reference for stupid me: https://open.gl/drawing
 
 	// Generate Array buffer with vertices of square
@@ -703,9 +703,10 @@ void initSC() {
 	glGenTextures(4, glBufferShaderFramebufferTextures);
 
 	for (int i = 0; i < 4; ++i) {
-		glBindFramebuffer(GL_FRAMEBUFFER, glBufferShaderFramebuffers[0]);
+		glBindFramebuffer(GL_FRAMEBUFFER, glBufferShaderFramebuffers[i]);
+		glViewport(0, 0, glWidth, glHeight);
 
-		glBindTexture(GL_TEXTURE_2D, glBufferShaderFramebufferTextures[0]);
+		glBindTexture(GL_TEXTURE_2D, glBufferShaderFramebufferTextures[i]);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, glWidth, glHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
 
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -716,119 +717,6 @@ void initSC() {
 
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-
-	// Generate framebuffers & framebuffer texture for main shader
-	// TODO: remove this test conditions
-	//glGenFramebuffers(1, &glMainShaderFramebuffer);
-	//glBindFramebuffer(GL_FRAMEBUFFER, glMainShaderFramebuffer);
-	//
-	//glGenTextures(1, &glMainShaderFramebufferTexture);
-	//glBindTexture(GL_TEXTURE_2D, glMainShaderFramebufferTexture);
-	//glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, glWidth, glHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
-	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	//
-	//glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, glMainShaderFramebufferTexture, 0);
-	//glDrawBuffers(1, &glMainShaderFramebuffer);
-	//
-	//glBindTexture(GL_TEXTURE_2D, 0);
-	//glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-
-	/*
-	// Generate framebuffers & framebuffer texture for Buffer A
-	glGenFramebuffers(1, &glBufferAShaderFramebuffer);
-	glBindFramebuffer(GL_FRAMEBUFFER, glBufferAShaderFramebuffer);
-
-	glGenTextures(1, &glBufferAShaderFramebufferTexture);
-	glBindTexture(GL_TEXTURE_2D, glBufferAShaderFramebufferTexture);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, glWidth, glHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-
-	glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, glBufferAShaderFramebufferTexture, 0);
-	glDrawBuffers(1, &glBufferAShaderFramebuffer);
-
-	glBindtexture(GL_TEXTURE_2D, 0);
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-
-	// Generate framebuffers & framebuffer texture for Buffer B
-	glGenFramebuffers(1, &glBufferBShaderFramebuffer);
-	glBindFramebuffer(GL_FRAMEBUFFER, glBufferBShaderFramebuffer);
-
-	glGenTextures(1, &glBufferBShaderFramebufferTexture);
-	glBindTexture(GL_TEXTURE_2D, glBufferBShaderFramebufferTexture);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, glWidth, glHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-
-	glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, glBufferBShaderFramebufferTexture, 0);
-	glDrawBuffers(1, &glBufferBShaderFramebuffer);
-
-	glBindtexture(GL_TEXTURE_2D, 0);
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-
-	// Generate framebuffers & framebuffer texture for Buffer C
-	glGenFramebuffers(1, &glBufferCShaderFramebuffer);
-	glBindFramebuffer(GL_FRAMEBUFFER, glBufferCShaderFramebuffer);
-
-	glGenTextures(1, &glBufferCShaderFramebufferTexture);
-	glBindTexture(GL_TEXTURE_2D, glBufferCShaderFramebufferTexture);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, glWidth, glHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-
-	glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, glBufferCShaderFramebufferTexture, 0);
-	glDrawBuffers(1, &glBufferCShaderFramebuffer);
-
-	glBindtexture(GL_TEXTURE_2D, 0);
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-
-	// Generate framebuffers & framebuffer texture for Buffer D
-	glGenFramebuffers(1, &glBufferDShaderFramebuffer);
-	glBindFramebuffer(GL_FRAMEBUFFER, glBufferDShaderFramebuffer);
-
-	glGenTextures(1, &glBufferDShaderFramebufferTexture);
-	glBindTexture(GL_TEXTURE_2D, glBufferDShaderFramebufferTexture);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, glWidth, glHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-
-	glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, glBufferDShaderFramebufferTexture, 0);
-	glDrawBuffers(1, &glBufferDShaderFramebuffer);
-
-	glBindtexture(GL_TEXTURE_2D, 0);
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	*/
-
-
-	// TODO: tuturudu
-
-	// TODO: initialize frame buffers and textures for them
-
-
-
-	//glGenVertexArrays(1, &glSCVAO);
-	//glGenBuffers(1, &glSCVBO);
-	//glGenBuffers(1, &glSCEBO);
-	//
-	//glBindVertexArray(glSCVAO);
-	//
-	//glBindBuffer(GL_ARRAY_BUFFER, glSCVBO);
-	//glBufferData(GL_ARRAY_BUFFER, sizeof(glSCVertices), glSCVertices, GL_STATIC_DRAW);
-	//
-	//glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, glSCEBO);
-	//glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(glSCIndices), glSCIndices, GL_STATIC_DRAW);
-	//
-	//glVertexAttribPointer(glGetAttribLocation(0, "position"), 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), (GLvoid*)0);
-	//glEnableVertexAttribArray(0);
-	//
-	//glBindBuffer(GL_ARRAY_BUFFER, 0);
-	//
-	//glBindVertexArray(0);
 }
 
 // Resize the OpenGL Scene
@@ -841,11 +729,15 @@ void resizeSC() {
 
 	// Resize all buffer textures
 	for (int i = 0; i < 4; ++i) {
-		glBindTexture(GL_TEXTURE_2D, glBufferShaderFramebufferTextures[0]);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, glWidth, glHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
-	}
+		glBindFramebuffer(GL_FRAMEBUFFER, glBufferShaderFramebuffers[i]);
+		glViewport(0, 0, glWidth, glHeight);
 
-	glBindTexture(GL_TEXTURE_2D, 0);
+		glBindTexture(GL_TEXTURE_2D, glBufferShaderFramebufferTextures[i]);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, glWidth, glHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
+
+		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+		glBindTexture(GL_TEXTURE_2D, 0);
+	}
 }
 
 // Render single frame of the Scene
@@ -859,85 +751,313 @@ void renderSC() {
 
 		if (!scPaused) {
 
+			// Each shader has following inputs (From shadertoy.com):
+			// 
+			// Basic:
+			// uniform vec3      iResolution;           // viewport resolution (in pixels)
+			// uniform float     iTime;                 // shader playback time (in seconds)
+			// uniform float     iTimeDelta;            // render time (in seconds)
+			// uniform int       iFrame;                // shader playback frame
+			// uniform vec4      iMouse;                // mouse pixel coords. xy: current (if MLB down), zw: click
+			// uniform vec4      iDate;                 // (year, month, day, time in seconds)
+			// 
+			// Advanced:
+			// uniform float     iChannelTime[4];       // channel playback time (in seconds)
+			// uniform vec3      iChannelResolution[4]; // channel resolution (in pixels)
+			// uniform samplerXX iChannel0..3;          // input channel. XX = 2D/Cube
+			// 
+			// TODO: Deprecated (Always 0 yet):
+			// uniform float     iSampleRate;           // sound sample rate (i.e., 44100)
+
+			// Basic values:
+			time_t t = std::time(NULL);
+			tm* timePtr = std::localtime(&t);
+			// Warning: If you are from 16,777,215 earth year, this programm will stop normally function in the next year
+			//          If you are not from earth or do not rely on gregorian calendar, ignore this message
+			//          Si per accidens, vocavit ab exterioris ratio in usu hoc progressio, vos can contact bitrate16@gmail.com 
+			//           ad tollendam hac, et revertere ad pristina circulus inferni.
+			//          In case of containment breach caused by this program, activate protocol SCP-[DELETED]-Alpha to avoid [DATA CORRUPTED].
+			//          R WAAQ COS DaR AMITo 7 > DOS mot
+			// TODO: tuturudu
+			float iDate_year = (float) timePtr->tm_year;
+			float iDate_month = (float) timePtr->tm_mon;
+			float iDate_day = (float) timePtr->tm_mday;
+			float iDate_time = (float) (timePtr->tm_hour * 60 * 60 + timePtr->tm_min * 60 + timePtr->tm_sec);
+
+			// Calculate mouse location (if enabled)
+			POINT currentMouse = { 0, 0 };
+
+			if (scMouseEnabled) {
+				if (!GetCursorPos(&currentMouse))
+					currentMouse = { 0, 0 };
+				else {
+					// Compute mouse relative to each display in case of single screen
+					currentMouse.x -= currentWindowDimensions.left;
+					currentMouse.y -= currentWindowDimensions.top;
+					currentMouse.y = currentWindowDimensions.bottom + currentWindowDimensions.top - currentMouse.y;
+				}
+			}
+
+			// TODO: Move following code out of renderSC to prevent resource evaluation count in scene render time
+			// TODO: Evaluate dynamic resources (Video / webcam frames, audio / microphone FFT's)
+			for (size_t i = 0; i < ResourceTableSize; ++i) {
+				if (scResources[i].empty)
+					continue;
+
+				switch (scResources[i].resource.type) {
+					case AUDIO_TEXTURE: { // TODO: Evaluate dynamic resources media resources
+						break;
+					}
+
+					case VIDEO_TEXTURE: {
+						break;
+					}
+
+					case MIC_TEXTURE: {
+						break;
+					}
+
+					case WEB_TEXTURE: {
+						break;
+					}
+				}
+			}
+
+			// Evaluate buffers
+			// Constant names for optimize speed:
+			const char* const iChannelResolutionUniforms[4] = {
+				"iChannelResolution[0]",
+				"iChannelResolution[1]",
+				"iChannelResolution[2]",
+				"iChannelResolution[3]"
+			};
+
+			const char* const iChannelTimeUniforms[4] = {
+				"iChannelTime[0]",
+				"iChannelTime[1]",
+				"iChannelTime[2]",
+				"iChannelTime[3]"
+			};
+
+			const char* const iChannelUniforms[4] = {
+				"iChannel0",
+				"iChannel1",
+				"iChannel2",
+				"iChannel3"
+			};
+
+			// Render all buffers
+			// TODO: Asynchronous buffer & main shader rendering
+			for (int i = 0; i < 4; ++i) {
+
+				// Require both conditions to complete in order to render
+				if (glBufferShaderShouldBeRendered[i] && glBufferShaderProgramIDs[i] != -1) {
+
+					// TODO: Should copy rexture first?
+					glBindFramebuffer(GL_FRAMEBUFFER, glBufferShaderFramebuffers[i]);
+					glClearColor(0, 0, 0, 0);
+					glClear(GL_COLOR_BUFFER_BIT);
+
+					// Load all Basic inputs
+					glUniform3f(glGetUniformLocation(glBufferShaderProgramIDs[i], "iResolution"), (float) glWidth, (float) glHeight, 0.0);
+					glUniform1f(glGetUniformLocation(glBufferShaderProgramIDs[i], "iTime"), (float) glfwGetTime());
+					glUniform1f(glGetUniformLocation(glBufferShaderProgramIDs[i], "iTimeDelta"), (float) (glfwGetTime() - scTimestamp));
+					glUniform1i(glGetUniformLocation(glBufferShaderProgramIDs[i], "iFrame"), scFrames);
+
+					// imouse.xy = current mouse location
+					// iMouse.zw = previous mouse location
+					// TODO: Validate iMouse.zw data
+					if (scMouseEnabled) 
+						glUniform4f(glGetUniformLocation(glBufferShaderProgramIDs[i], "iMouse"), (GLfloat) currentMouse.x, (GLfloat) currentMouse.y, (GLfloat) scMouse.x, (GLfloat) scMouse.y);
+					else
+						glUniform4f(glGetUniformLocation(glBufferShaderProgramIDs[i], "iMouse"), (GLfloat) scMouse.x, (GLfloat) scMouse.y, 0, 0);
+
+					glUniform4f(glGetUniformLocation(glBufferShaderProgramIDs[i], "iDate"), (GLfloat) iDate_year, (GLfloat) iDate_month, (GLfloat) iDate_day, (GLfloat) iDate_time);
+
+					// Default value for SampleRate
+					// TODO: Should evaluate from inputs?
+					glUniform1f(glGetUniformLocation(glBufferShaderProgramIDs[i], "iSampleRate"), 0);
+
+					// Bind iChannel data
+					for (int k = 0; k < 4; ++k) {
+						if (scBufferShaderInputs[i][k] == -1) {
+							glUniform3f(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelResolutionUniforms[k]), (GLfloat) 0, (GLfloat) 0, (GLfloat) 0);
+							glUniform1f(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelTimeUniforms[k]), (GLfloat) 0);
+							continue;
+						}
+
+						if (scResources[scBufferShaderInputs[i][k]].empty) {
+							std::wcout << "Can not configure iChannelResolution for input " << k << " in Buffer " << i << ", input points to empty resource, scResources corrupt" << std::endl;
+							glUniform3f(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelResolutionUniforms[k]), (GLfloat) 0, (GLfloat) 0, (GLfloat) 0);
+							glUniform1f(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelTimeUniforms[k]), (GLfloat) 0);
+							continue;
+						}
+
+						switch (scResources[scBufferShaderInputs[i][k]].resource.type) {
+							case IMAGE_TEXTURE: { // TODO: Compute input dimensions
+								glUniform3f(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelResolutionUniforms[k]), (GLfloat) 0, (GLfloat) 0, (GLfloat) 0);
+								glUniform1f(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelTimeUniforms[k]), (GLfloat) 0);
+								continue;
+							}
+
+							case AUDIO_TEXTURE: {
+								glUniform3f(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelResolutionUniforms[k]), (GLfloat) 0, (GLfloat) 0, (GLfloat) 0);
+								glUniform1f(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelTimeUniforms[k]), (GLfloat) 0);
+								continue;
+							}
+
+							case VIDEO_TEXTURE: {
+								glUniform3f(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelResolutionUniforms[k]), (GLfloat) 0, (GLfloat) 0, (GLfloat) 0);
+								glUniform1f(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelTimeUniforms[k]), (GLfloat) 0);
+								continue;
+							}
+
+							case MIC_TEXTURE: {
+								glUniform3f(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelResolutionUniforms[k]), (GLfloat) 0, (GLfloat) 0, (GLfloat) 0);
+								glUniform1f(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelTimeUniforms[k]), (GLfloat) 0);
+								continue;
+							}
+
+							case WEB_TEXTURE: {
+								glUniform3f(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelResolutionUniforms[k]), (GLfloat) 0, (GLfloat) 0, (GLfloat) 0);
+								glUniform1f(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelTimeUniforms[k]), (GLfloat) 0);
+								continue;
+							}
+
+							case FRAME_BUFFER: { // Buffer size always match the viewport size
+								
+								// Bind texture
+								// TODO: In parallel rendering use different CL_TEXTURE* to avoid data intersection
+								// TODO: Support for Sampler3D, e.t.c.
+								glActiveTexture(GL_TEXTURE0 + k);
+								glBindTexture(GL_TEXTURE_2D, glBufferShaderFramebufferTextures[scResources[scBufferShaderInputs[i][k]].resource.buffer_id]);
+								glUniform1i(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelUniforms[k]), k);
+
+								// Width & Height 
+								glUniform3f(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelResolutionUniforms[k]), (GLfloat) glWidth, (GLfloat) glHeight, (GLfloat) 0);
+								
+								// Timestamp of previous buffer frame
+								glUniform1f(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelTimeUniforms[k]), (GLfloat) scTimestamp);
+								continue;
+							}
+						}
+					}
+
+					// Render Buffer i
+					glUseProgram(glBufferShaderProgramIDs[i]);
+					glBindVertexArray(glSquareVAO);
+					glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+					glBindVertexArray(0);
+					glFlush();
+				}
+			}
+
+			// Render Main Shader
 			glClearColor(0, 0, 0, 1.0);
 			glClear(GL_COLOR_BUFFER_BIT);
 
-			// TODO: move inputs to buffer
+			// Load all Basic inputs
 			glUniform3f(glGetUniformLocation(glMainShaderProgramID, "iResolution"), (float) glWidth, (float) glHeight, 0.0);
 			glUniform1f(glGetUniformLocation(glMainShaderProgramID, "iTime"), (float) glfwGetTime());
 			glUniform1f(glGetUniformLocation(glMainShaderProgramID, "iTimeDelta"), (float) (glfwGetTime() - scTimestamp));
 			glUniform1i(glGetUniformLocation(glMainShaderProgramID, "iFrame"), scFrames);
 
-			if (scMouseEnabled) {
-				// imouse.xy = current mouse location
-				// iMouse.zw = previous mouse location (didn't figure out yet)
-				POINT currentMouse;
-				if (!GetCursorPos(&currentMouse))
-					currentMouse = { 0, 0 };
-
-				// Compute mouse relative to each display in case of single screen
-				currentMouse.x -= currentWindowDimensions.left;
-				currentMouse.y -= currentWindowDimensions.top;
-				currentMouse.y = currentWindowDimensions.bottom + currentWindowDimensions.top - currentMouse.y;
-
+			// imouse.xy = current mouse location
+			// iMouse.zw = previous mouse location
+			// TODO: Validate iMouse.zw data
+			if (scMouseEnabled)
 				glUniform4f(glGetUniformLocation(glMainShaderProgramID, "iMouse"), (GLfloat) currentMouse.x, (GLfloat) currentMouse.y, (GLfloat) scMouse.x, (GLfloat) scMouse.y);
+			else
+				glUniform4f(glGetUniformLocation(glMainShaderProgramID, "iMouse"), (GLfloat) scMouse.x, (GLfloat) scMouse.y, 0, 0);
 
-				scMouse.x = currentMouse.x;
-				scMouse.y = currentMouse.y;
-			} else
-				glUniform4f(glGetUniformLocation(glMainShaderProgramID, "iMouse"), (GLfloat) scMouse.x, (GLfloat) scMouse.y, 0.0, 0.0);
+			glUniform4f(glGetUniformLocation(glMainShaderProgramID, "iDate"), (GLfloat) iDate_year, (GLfloat) iDate_month, (GLfloat) iDate_day, (GLfloat) iDate_time);
 
-			scTimestamp = (float) glfwGetTime();
-			++scFrames;
+			// Default value for SampleRate
+			// TODO: Should evaluate from inputs?
+			glUniform1f(glGetUniformLocation(glMainShaderProgramID, "iSampleRate"), 0);
 
+			// Bind iChannel data
+			for (int k = 0; k < 4; ++k) {
+				if (scMainShaderInputs[k] == -1) {
+					glUniform3f(glGetUniformLocation(glMainShaderProgramID, iChannelResolutionUniforms[k]), (GLfloat) 0, (GLfloat) 0, (GLfloat) 0);
+					glUniform1f(glGetUniformLocation(glMainShaderProgramID, iChannelTimeUniforms[k]), (GLfloat) 0);
+					continue;
+				}
+
+				if (scResources[scMainShaderInputs[k]].empty) {
+					std::wcout << "Can not configure iChannelResolution for input " << k << " in Main Shader, input points to empty resource, scResources corrupt" << std::endl;
+					glUniform3f(glGetUniformLocation(glMainShaderProgramID, iChannelResolutionUniforms[k]), (GLfloat) 0, (GLfloat) 0, (GLfloat) 0);
+					glUniform1f(glGetUniformLocation(glMainShaderProgramID, iChannelTimeUniforms[k]), (GLfloat) 0);
+					continue;
+				}
+
+				switch (scResources[scMainShaderInputs[k]].resource.type) {
+					case IMAGE_TEXTURE: { // TODO: Compute input dimensions
+						glUniform3f(glGetUniformLocation(glMainShaderProgramID, iChannelResolutionUniforms[k]), (GLfloat) 0, (GLfloat) 0, (GLfloat) 0);
+						glUniform1f(glGetUniformLocation(glMainShaderProgramID, iChannelTimeUniforms[k]), (GLfloat) 0);
+						continue;
+					}
+
+					case AUDIO_TEXTURE: {
+						glUniform3f(glGetUniformLocation(glMainShaderProgramID, iChannelResolutionUniforms[k]), (GLfloat) 0, (GLfloat) 0, (GLfloat) 0);
+						glUniform1f(glGetUniformLocation(glMainShaderProgramID, iChannelTimeUniforms[k]), (GLfloat) 0);
+						continue;
+					}
+
+					case VIDEO_TEXTURE: {
+						glUniform3f(glGetUniformLocation(glMainShaderProgramID, iChannelResolutionUniforms[k]), (GLfloat) 0, (GLfloat) 0, (GLfloat) 0);
+						glUniform1f(glGetUniformLocation(glMainShaderProgramID, iChannelTimeUniforms[k]), (GLfloat) 0);
+						continue;
+					}
+
+					case MIC_TEXTURE: {
+						glUniform3f(glGetUniformLocation(glMainShaderProgramID, iChannelResolutionUniforms[k]), (GLfloat) 0, (GLfloat) 0, (GLfloat) 0);
+						glUniform1f(glGetUniformLocation(glMainShaderProgramID, iChannelTimeUniforms[k]), (GLfloat) 0);
+						continue;
+					}
+
+					case WEB_TEXTURE: {
+						glUniform3f(glGetUniformLocation(glMainShaderProgramID, iChannelResolutionUniforms[k]), (GLfloat) 0, (GLfloat) 0, (GLfloat) 0);
+						glUniform1f(glGetUniformLocation(glMainShaderProgramID, iChannelTimeUniforms[k]), (GLfloat) 0);
+						continue;
+					}
+
+					case FRAME_BUFFER: { // Buffer size always match the viewport size
+
+						// Bind texture
+						// TODO: In parallel rendering use different CL_TEXTURE* to avoid data intersection
+						// TODO: Support for Sampler3D, e.t.c.
+						glActiveTexture(GL_TEXTURE0 + k);
+						glBindTexture(GL_TEXTURE_2D, glBufferShaderFramebufferTextures[scResources[scMainShaderInputs[k]].resource.buffer_id]);
+						glUniform1i(glGetUniformLocation(glMainShaderProgramID, iChannelUniforms[k]), k);
+
+						// Width & Height 
+						glUniform3f(glGetUniformLocation(glMainShaderProgramID, iChannelResolutionUniforms[k]), (GLfloat) glWidth, (GLfloat) glHeight, (GLfloat) 0);
+
+						// Timestamp of previous buffer frame
+						glUniform1f(glGetUniformLocation(glMainShaderProgramID, iChannelTimeUniforms[k]), (GLfloat) scTimestamp);
+						continue;
+					}
+				}
+			}
+
+			// Render Main Shader
 			glUseProgram(glMainShaderProgramID);
 			glBindVertexArray(glSquareVAO);
 			glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 			glBindVertexArray(0);
 
 			glFlush();
+
 			SwapBuffers(glDevice);
 
-			/*
-			std::wcout << glGetError() << std::endl; system("PAUSE");
-
-			glClearColor(0, 0, 0, 1.0);
-			glClear(GL_COLOR_BUFFER_BIT);
-
-			std::wcout << glGetError() << std::endl; system("PAUSE");
-
-			// TODO: move inputs to buffer
-			GLuint temp = glGetUniformLocation(glMainShaderProgramID, "iResolution");
-			glUniform3f(temp, (float) glWidth, (float) glHeight, 0.0);
-			glUniform1f(glGetUniformLocation(glMainShaderProgramID, "iTime"), (float) glfwGetTime());
-			glUniform1f(glGetUniformLocation(glMainShaderProgramID, "iTimeDelta"), (float) (glfwGetTime() - scTimestamp));
-			glUniform1i(glGetUniformLocation(glMainShaderProgramID, "iFrame"), scFrames);
-
-			if (scMouseEnabled) {
-				// imouse.xy = current mouse location
-				// iMouse.zw = previous mouse location (didn't figure out yet)
-				POINT currentMouse;
-				if (!GetCursorPos(&currentMouse))
-					currentMouse = { 0, 0 };
-
-				glUniform4f(glGetUniformLocation(glMainShaderProgramID, "iMouse"), (GLfloat)currentMouse.x, (GLfloat)currentMouse.y, (GLfloat)scMouse.x, (GLfloat)scMouse.y);
-
-				scMouse.x = currentMouse.x;
-				scMouse.y = currentMouse.y;
-			} else
-				glUniform4f(glGetUniformLocation(glMainShaderProgramID, "iMouse"), (GLfloat)scMouse.x, (GLfloat)scMouse.y, 0.0, 0.0);
-
-			scTimestamp = (float)glfwGetTime();
+			// Update required values
+			scTimestamp = (float) glfwGetTime();
 			++scFrames;
 
-			glUseProgram(glMainShaderProgramID);
-			glBindVertexArray(glSCVAO);
-			glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-			glBindVertexArray(0);
-
-			glFlush();
-			SwapBuffers(glDevice);
-			*/
+			// Update mouse location
+			scMouse.x = currentMouse.x;
+			scMouse.y = currentMouse.y;
 		}
 	}
 }
@@ -1016,15 +1136,24 @@ void dispose() {
 	
 	wglMakeCurrent(glDevice, glContext);
 
-	// Unlink all shaders
+	// Unlink all shaders & buffers
 	unloadMainShader();
 
-	for (int i = 0; i < 4; ++i)
+	for (int i = 0; i < 4; ++i) 
 		if (glBufferShaderProgramIDs[i] != -1)
 			glDeleteProgram(glBufferShaderProgramIDs[i]);
 
-	// TODO: Unlink all resources
+	// Buffer i buffer & texture
+	glDeleteTextures(4, glBufferShaderFramebufferTextures);
+	glDeleteBuffers(4, glBufferShaderFramebuffers);
 
+	// Square buffer
+	glDeleteVertexArrays(1, &glSquareVAO);
+	glDeleteBuffers(1, &glSquareVBO);
+	glDeleteBuffers(1, &glSquareEBO);
+
+	// Unlink all resources
+	unloadResources();
 
 	wglMakeCurrent(NULL, NULL);
 }

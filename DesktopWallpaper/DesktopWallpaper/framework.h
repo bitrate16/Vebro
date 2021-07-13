@@ -14,6 +14,7 @@
 #include <WinUser.h>
 #include <tchar.h>
 #include <cmath>
+#include <ctime>
 #include <iostream>
 #include <cstdio>
 #include <string>
