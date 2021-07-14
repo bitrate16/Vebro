@@ -15,12 +15,9 @@
 #include <tchar.h>
 #include <cmath>
 #include <ctime>
-#include <iostream>
 #include <cstdio>
 #include <string>
 #include <iomanip>
-#include <sstream>
-#include <fstream>
 #include <streambuf>
 #include <io.h>
 #include <fcntl.h>
@@ -31,12 +28,19 @@
 #include <malloc.h>
 #include <memory.h>
 #include <tchar.h>
-#include <string>
 #include <thread>
 #include <mutex>
 #include <condition_variable>
+#include <filesystem>
+#include <sstream>
+#include <istream>
+#include <fstream>
+#include <iostream>
+#include <string>
 
 #include <GL/glew.h>
 #include <GL/gl.h>
 #include <GL/glu.h>
 #include <GLFW/glfw3.h>
+
+#include "lodepng.h"

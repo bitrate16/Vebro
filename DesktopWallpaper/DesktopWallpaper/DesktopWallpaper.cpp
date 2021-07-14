@@ -25,7 +25,7 @@ HDC      glDevice;
 HGLRC    glContext;
 int      glWidth;
 int      glHeight;
-BOOL     glDebugOutput = FALSE;
+BOOL     wndDebugOutput = FALSE;
 
 // >> OpenGL related
 // Buffers for viewport coords
@@ -34,6 +34,10 @@ GLuint glSquareVBO;
 GLuint glSquareEBO;
 
 // Shaders (if exists)
+// Shader for texture copy
+GLuint glPassthroughShaderProgramID;
+
+// Main shader
 GLuint glMainShaderProgramID = -1;   // Main shader program ID
 const char* glMainShaderPath = NULL; // Path to the main shader (For support reload button)
 
@@ -42,14 +46,16 @@ GLuint glBufferShaderProgramIDs[4] = { -1, -1, -1, -1 };        // Buffer i shad
 const char* glBufferShaderPath[4] = { NULL, NULL, NULL, NULL }; // Path to the Buffer i shader (For support reload button)
 
 // Framebuffers for these shaders
-GLuint glBufferShaderFramebuffers[4];
+// 2 Framebuffers for each single buffer to enable multipass
+GLuint glBufferShaderFramebuffers[2][4];
 
 // Textures to render in.
 //  This textures will exist till the end of the program because they 
 //   are used as temp variables storing buffer output for the next frame 
 //   and can be used as input even if shader for this buffer (A / B / C / D) 
 //   was removed.
-GLuint glBufferShaderFramebufferTextures[4];
+// 2 Textures for each single buffer to enable multipass
+GLuint glBufferShaderFramebufferTextures[2][4];
 
 // Indicates if buffer[i] should be rendered
 // Changed view resource control
@@ -110,7 +116,7 @@ enum ResourceType {
 struct SCResource {
 
 	// Resource references amount (auto GC)
-	long refs = 0;
+	int refs = 0;
 
 	// Resource type
 	ResourceType type;
@@ -119,11 +125,27 @@ struct SCResource {
 	GLuint bind = 0;
 
 	// ID number of buffer (only for buffer input)
-	char buffer_id = 0;
+	int buffer_id = 0;
 
 	// Absolute path of resource (used to determine duplications)
-	char* path;
+	std::string path;
+
+	// Dimensions
+	int width;
+	int height;
 };
+
+std::wstring resourceToShordDescription(SCResource& res) {
+	switch (res.type) {
+		case IMAGE_TEXTURE: return std::wstring(L"Image [") + std::wstring(res.path.begin(), res.path.end()) + L"]";
+		case AUDIO_TEXTURE: return L"Audio";
+		case VIDEO_TEXTURE: return L"Video";
+		case MIC_TEXTURE: return L"Microphone";
+		case WEB_TEXTURE: return L"Webcam";
+		case FRAME_BUFFER: return std::wstring(L"Buffer ") + L"ABCD"[res.buffer_id];
+		default: L"";
+	}
+}
 
 // Resource storage table (used to prevent reduplications of loading and processing)
 // Storas static fixed amount of resources matching the total amount of inputs for all shaders
@@ -147,19 +169,19 @@ int findResource(SCResource res) {
 		if (res.type == scResources[i].resource.type) {
 			switch (res.type) {
 				case IMAGE_TEXTURE: {
-					if (strcmp(res.path, scResources[i].resource.path) == 0)
+					if (res.path == scResources[i].resource.path)
 						return i;
 					return -1;
 				}
 
 				case AUDIO_TEXTURE: {
-					if (strcmp(res.path, scResources[i].resource.path) == 0)
+					if (res.path == scResources[i].resource.path)
 						return i;
 					return -1;
 				}
 
 				case VIDEO_TEXTURE: {
-					if (strcmp(res.path, scResources[i].resource.path) == 0)
+					if (res.path == scResources[i].resource.path)
 						return i;
 					return -1;
 				}
@@ -194,11 +216,85 @@ int loadResource(SCResource res) {
 
 	// Called once when initially loading resource:
 	switch (res.type) {
-		case IMAGE_TEXTURE: { // TODO: Load media resources
+		case IMAGE_TEXTURE: {
+			res.refs = 1;
+
+			std::vector<unsigned char> image;
+			unsigned width, height;
+
+			unsigned error = lodepng::decode(image, width, height, res.path);
+
+			std::wcout << "Loading resource for Texture [" << res.path.c_str() << "] (" << width << ", " << height << ')' << std::endl;
+
+			if (error != 0) {
+
+				std::wcout << "Image resource load error: " << lodepng_error_text(error) << std::endl;
+				MessageBoxA(
+					NULL,
+					lodepng_error_text(error),
+					"Image load error",
+					MB_ICONERROR | MB_OK
+				);
+
+				return -1;
+			}
+
+			// Flip image vertically
+			for (size_t y = 0; y < height / 2; y++)
+				for (size_t x = 0; x < width; x++)
+					for (size_t c = 0; c < 4; c++)
+						std::swap(image[4 * width * y + 4 * x + c], image[4 * width * (height - y - 1) + 4 * x + c]);
+
+			// Find closest power of two
+			size_t u2 = 1; while (u2 < width) u2 *= 2;
+			size_t v2 = 1; while (v2 < height) v2 *= 2;
+
+			res.width = u2;
+			res.height = v2;
+
+			if (u2 != width)
+				std::wcout << "Texture warning: width must be power of two, got " << width << ", resizing to closest " << u2 << std::endl;
+			if (v2 != height)
+				std::wcout << "Texture warning: height must be power of two, got " << height << ", resizing to closest " << v2 << std::endl;
+			
+			// To size of two conversion ratio
+			double u3 = (double) width / u2;
+			double v3 = (double) height / v2;
+
+			// Resize texture to power of two
+			std::vector<unsigned char> image2(u2 * v2 * 4);
+			for (size_t y = 0; y < height; y++)
+				for (size_t x = 0; x < width; x++)
+					for (size_t c = 0; c < 4; c++) 
+						image2[4 * u2 * y + 4 * x + c] = image[4 * width * y + 4 * x + c];
+
+			// Generate texture & pass pixeldata
+			glGenTextures(1, &res.bind);
+			glBindTexture(GL_TEXTURE_2D, res.bind);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+			glTexImage2D(GL_TEXTURE_2D, 0, 4, u2, v2, 0, GL_RGBA, GL_UNSIGNED_BYTE, &image2[0]);
+			glBindTexture(GL_TEXTURE_2D, 0);
+
+			std::wcout << "Inserting resource for Texture [" << res.path.c_str() << ']' << std::endl;
+
+			// Insert into first free cell
+			for (int i = 0; i < ResourceTableSize; ++i)
+				if (scResources[i].empty) {
+					scResources[i].empty = FALSE;
+					scResources[i].resource = res;
+					return i;
+				}
+
+			std::wcout << "Can not insert Texture resource, resource table is corrupted" << std::endl;
+			glDeleteTextures(1, &res.bind);
+
 			return -1;
 		}
 
-		case AUDIO_TEXTURE: {
+		case AUDIO_TEXTURE: { // TODO: Load media resources
 			return -1;
 		}
 
@@ -215,9 +311,11 @@ int loadResource(SCResource res) {
 		}
 
 		case FRAME_BUFFER: {
-			++res.refs;
+			res.refs = 1;
 
 			glBufferShaderShouldBeRendered[res.buffer_id] = TRUE;
+
+			std::wcout << "Inserting resource for Buffer " << res.buffer_id << std::endl;
 
 			// Insert into first free cell
 			for (int i = 0; i < ResourceTableSize; ++i)
@@ -227,7 +325,7 @@ int loadResource(SCResource res) {
 					return i;
 				}
 
-			std::wcout << "Can not insert resource, resource table is corrupted" << std::endl;
+			std::wcout << "Can not insert Buffer " << res.buffer_id << " resource, resource table is corrupted" << std::endl;
 			return -1;
 		}
 	}
@@ -260,11 +358,13 @@ void unloadResource(int resID) {
 
 	// Called once when finally disposing resource:
 	switch (scResources[resID].resource.type) {
-		case IMAGE_TEXTURE: { // TODO: Unload media resources
+		case IMAGE_TEXTURE: {
+			std::wcout << "Unloading resource for Texture [" << scResources[resID].resource.path.c_str() << ']' << std::endl;
+			glDeleteTextures(1, &scResources[resID].resource.bind);
 			return;
 		}
 
-		case AUDIO_TEXTURE: {
+		case AUDIO_TEXTURE: { // TODO: Unload media resources
 			return;
 		}
 
@@ -281,6 +381,7 @@ void unloadResource(int resID) {
 		}
 
 		case FRAME_BUFFER: {
+			std::wcout << "Unloading resource for Buffer [" << scResources[resID].resource.buffer_id << ']' << std::endl;
 			glBufferShaderShouldBeRendered[scResources[resID].resource.buffer_id] = FALSE;
 			return;
 		}
@@ -290,16 +391,85 @@ void unloadResource(int resID) {
 // Performs reloading of all resources
 // Returns 0 on success, 1 else
 BOOL reloadResources() {
+	BOOL error = FALSE;
 	for (size_t i = 0; i < ResourceTableSize; ++i) {
 		if (scResources[i].empty)
 			continue;
 
 		switch (scResources[i].resource.type) {
-			case IMAGE_TEXTURE: { // TODO: Reload media resources
-				break;
+			case IMAGE_TEXTURE: {
+
+				std::wcout << "Reloading resource for Texture [" << scResources[i].resource.path.c_str() << ']' << std::endl;
+
+				// Unload
+				std::wcout << "Unloading resource for Texture [" << scResources[i].resource.path.c_str() << ']' << std::endl;
+				glDeleteTextures(1, &scResources[i].resource.bind);
+
+				// Load
+				std::vector<unsigned char> image;
+				unsigned width, height;
+
+				unsigned error = lodepng::decode(image, width, height, scResources[i].resource.path);
+
+				std::wcout << "Loading resource for Texture [" << scResources[i].resource.path.c_str() << "] (" << width << ", " << height << ')' << std::endl;
+
+				if (error != 0) {
+
+					std::wcout << "Image resource load error: " << lodepng_error_text(error) << std::endl;
+					MessageBoxA(
+						NULL,
+						lodepng_error_text(error),
+						"Image load error",
+						MB_ICONERROR | MB_OK
+					);
+
+					error = TRUE;
+					break;
+				}
+
+				// Flip image vertically
+				for (size_t y = 0; y < height / 2; y++)
+					for (size_t x = 0; x < width; x++)
+						for (size_t c = 0; c < 4; c++)
+							std::swap(image[4 * width * y + 4 * x + c], image[4 * width * (height - y - 1) + 4 * x + c]);
+
+				// Find closest power of two
+				size_t u2 = 1; while (u2 < width) u2 *= 2;
+				size_t v2 = 1; while (v2 < height) v2 *= 2;
+
+				scResources[i].resource.width = u2;
+				scResources[i].resource.height = v2;
+
+				if (u2 != width)
+					std::wcout << "Texture warning: width must be power of two, got " << width << ", resizing to closest " << u2 << std::endl;
+				if (v2 != height)
+					std::wcout << "Texture warning: height must be power of two, got " << height << ", resizing to closest " << v2 << std::endl;
+
+				// To size of two conversion ratio
+				double u3 = (double) width / u2;
+				double v3 = (double) height / v2;
+
+				// Resize texture to power of two
+				std::vector<unsigned char> image2(u2 * v2 * 4);
+				for (size_t y = 0; y < height; y++)
+					for (size_t x = 0; x < width; x++)
+						for (size_t c = 0; c < 4; c++)
+							image2[4 * u2 * y + 4 * x + c] = image[4 * width * y + 4 * x + c];
+
+				// Generate texture & pass pixeldata
+				glGenTextures(1, &scResources[i].resource.bind);
+				glBindTexture(GL_TEXTURE_2D, scResources[i].resource.bind);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+				glTexImage2D(GL_TEXTURE_2D, 0, 4, u2, v2, 0, GL_RGBA, GL_UNSIGNED_BYTE, &image2[0]);
+				glBindTexture(GL_TEXTURE_2D, 0);
+
+				break; // No insertion
 			}
 
-			case AUDIO_TEXTURE: {
+			case AUDIO_TEXTURE: { // TODO: Reload media resources
 				break;
 			}
 
@@ -316,12 +486,13 @@ BOOL reloadResources() {
 			}
 
 			case FRAME_BUFFER: {
+				std::wcout << "Reloading resource for Buffer [" << scResources[i].resource.buffer_id << "] : PASS" << std::endl;
 				break;
 			}
 		}
 	}
 
-	return 0;
+	return error;
 }
 
 // Unloads all resources
@@ -370,7 +541,7 @@ BOOL loadMainShaderResource(SCResource res, int inputID) {
 	if (scMainShaderInputs[inputID] != -1) {
 
 		int resID = findResource(res);
-
+		
 		// Do not relod the resource
 		if (resID == scMainShaderInputs[inputID])
 			return 0;
@@ -453,12 +624,13 @@ ShaderCompilationStatus compileShader(const char* fragmentSource) {
 	GLint status;
 	glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &status);
 
-	if (glDebugOutput && status != GL_TRUE) {
+	if (status != GL_TRUE) {
 
 		// TODO: std::vector<char> or std::string buffer
 		char buffer[4096];
 		glGetShaderInfoLog(vertexShader, 4096, NULL, buffer);
 
+		std::wcout << "Vertex shader compilation error: " << buffer << std::endl;
 		MessageBoxA(
 			NULL,
 			buffer,
@@ -477,12 +649,13 @@ ShaderCompilationStatus compileShader(const char* fragmentSource) {
 	status;
 	glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &status);
 
-	if (glDebugOutput && status != GL_TRUE) {
+	if (status != GL_TRUE) {
 
 		// TODO: std::vector<char> or std::string buffer
 		char buffer[4096];
 		glGetShaderInfoLog(fragmentShader, 4096, NULL, buffer);
 
+		std::wcout << "Fragment shader compilation error: " << buffer << std::endl;
 		MessageBoxA(
 			NULL,
 			buffer,
@@ -511,10 +684,12 @@ ShaderCompilationStatus compileShaderFromFile(const char* path) {
 	std::string str;
 
 	if (!f) {
+
+		std::wcout << "Failed to load Shader file: " << (std::string("Failed to load file ") + path).c_str() << std::endl;
 		MessageBoxA(
 			NULL,
-			(std::string("Failed to load file ") + path).c_str() ,
-			"Failed to load file",
+			(std::string("Failed to load file ") + path).c_str(),
+			"Failed to load Shader file",
 			MB_ICONERROR | MB_OK
 		);
 
@@ -664,6 +839,11 @@ void initSC() {
 	scTimestamp = 0.0;
 	scFrames = 0;
 
+	// Cool GL stuff (c)
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glEnable(GL_BLEND);
+	glDisable(GL_ALPHA_TEST);
+
 	// Reference for stupid me: https://open.gl/drawing
 
 	// Generate Array buffer with vertices of square
@@ -699,20 +879,39 @@ void initSC() {
 
 
 	// Create buffer and texture for all buffers (4 in total)
-	glGenFramebuffers(4, glBufferShaderFramebuffers);
-	glGenTextures(4, glBufferShaderFramebufferTextures);
+	glGenFramebuffers(4, glBufferShaderFramebuffers[0]);
+	glGenFramebuffers(4, glBufferShaderFramebuffers[1]);
+	glGenTextures(4, glBufferShaderFramebufferTextures[0]);
+	glGenTextures(4, glBufferShaderFramebufferTextures[1]);
 
 	for (int i = 0; i < 4; ++i) {
-		glBindFramebuffer(GL_FRAMEBUFFER, glBufferShaderFramebuffers[i]);
+		// First
+		glBindFramebuffer(GL_FRAMEBUFFER, glBufferShaderFramebuffers[0][i]);
 		glViewport(0, 0, glWidth, glHeight);
 
-		glBindTexture(GL_TEXTURE_2D, glBufferShaderFramebufferTextures[i]);
+		glBindTexture(GL_TEXTURE_2D, glBufferShaderFramebufferTextures[0][i]);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, glWidth, glHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
 
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
-		glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, glBufferShaderFramebufferTextures[i], 0);
+		glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, glBufferShaderFramebufferTextures[0][i], 0);
+
+		// Second
+		glBindFramebuffer(GL_FRAMEBUFFER, glBufferShaderFramebuffers[1][i]);
+		glViewport(0, 0, glWidth, glHeight);
+
+		glBindTexture(GL_TEXTURE_2D, glBufferShaderFramebufferTextures[1][i]);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, glWidth, glHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
+
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+		glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, glBufferShaderFramebufferTextures[1][i], 0);
 	}
 
 	glBindTexture(GL_TEXTURE_2D, 0);
@@ -729,10 +928,21 @@ void resizeSC() {
 
 	// Resize all buffer textures
 	for (int i = 0; i < 4; ++i) {
-		glBindFramebuffer(GL_FRAMEBUFFER, glBufferShaderFramebuffers[i]);
+		// First
+		glBindFramebuffer(GL_FRAMEBUFFER, glBufferShaderFramebuffers[0][i]);
 		glViewport(0, 0, glWidth, glHeight);
 
-		glBindTexture(GL_TEXTURE_2D, glBufferShaderFramebufferTextures[i]);
+		glBindTexture(GL_TEXTURE_2D, glBufferShaderFramebufferTextures[0][i]);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, glWidth, glHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
+
+		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+		glBindTexture(GL_TEXTURE_2D, 0);
+
+		// Second
+		glBindFramebuffer(GL_FRAMEBUFFER, glBufferShaderFramebuffers[1][i]);
+		glViewport(0, 0, glWidth, glHeight);
+
+		glBindTexture(GL_TEXTURE_2D, glBufferShaderFramebufferTextures[1][i]);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, glWidth, glHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
 
 		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
@@ -853,10 +1063,12 @@ void renderSC() {
 				// Require both conditions to complete in order to render
 				if (glBufferShaderShouldBeRendered[i] && glBufferShaderProgramIDs[i] != -1) {
 
-					// TODO: Should copy rexture first?
-					glBindFramebuffer(GL_FRAMEBUFFER, glBufferShaderFramebuffers[i]);
+					glBindFramebuffer(GL_FRAMEBUFFER, glBufferShaderFramebuffers[scFrames % 2][i]);
+					glViewport(0, 0, glWidth, glHeight);
 					glClearColor(0, 0, 0, 0);
 					glClear(GL_COLOR_BUFFER_BIT);
+
+					glUseProgram(glBufferShaderProgramIDs[i]);
 
 					// Load all Basic inputs
 					glUniform3f(glGetUniformLocation(glBufferShaderProgramIDs[i], "iResolution"), (float) glWidth, (float) glHeight, 0.0);
@@ -894,13 +1106,25 @@ void renderSC() {
 						}
 
 						switch (scResources[scBufferShaderInputs[i][k]].resource.type) {
-							case IMAGE_TEXTURE: { // TODO: Compute input dimensions
-								glUniform3f(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelResolutionUniforms[k]), (GLfloat) 0, (GLfloat) 0, (GLfloat) 0);
+							case IMAGE_TEXTURE: {
+
+								// Bind texture
+								// TODO: In parallel rendering use different CL_TEXTURE* to avoid data intersection
+								// TODO: Support for Sampler3D, e.t.c.
+								glActiveTexture(GL_TEXTURE0 + k);
+								glBindTexture(GL_TEXTURE_2D, scResources[scBufferShaderInputs[i][k]].resource.bind);
+								glUniform1i(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelUniforms[k]), k);
+
+								// Width & Height 
+								glUniform3f(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelResolutionUniforms[k]), (GLfloat) scResources[scBufferShaderInputs[i][k]].resource.width, (GLfloat) scResources[scBufferShaderInputs[i][k]].resource.height, (GLfloat) 0);
+
+								// Timestamp 0
 								glUniform1f(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelTimeUniforms[k]), (GLfloat) 0);
+
 								continue;
 							}
 
-							case AUDIO_TEXTURE: {
+							case AUDIO_TEXTURE: { // TODO: Compute input dimensions
 								glUniform3f(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelResolutionUniforms[k]), (GLfloat) 0, (GLfloat) 0, (GLfloat) 0);
 								glUniform1f(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelTimeUniforms[k]), (GLfloat) 0);
 								continue;
@@ -930,7 +1154,7 @@ void renderSC() {
 								// TODO: In parallel rendering use different CL_TEXTURE* to avoid data intersection
 								// TODO: Support for Sampler3D, e.t.c.
 								glActiveTexture(GL_TEXTURE0 + k);
-								glBindTexture(GL_TEXTURE_2D, glBufferShaderFramebufferTextures[scResources[scBufferShaderInputs[i][k]].resource.buffer_id]);
+								glBindTexture(GL_TEXTURE_2D, glBufferShaderFramebufferTextures[(scFrames + 1) % 2][scResources[scBufferShaderInputs[i][k]].resource.buffer_id]);
 								glUniform1i(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelUniforms[k]), k);
 
 								// Width & Height 
@@ -944,17 +1168,21 @@ void renderSC() {
 					}
 
 					// Render Buffer i
-					glUseProgram(glBufferShaderProgramIDs[i]);
 					glBindVertexArray(glSquareVAO);
 					glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 					glBindVertexArray(0);
+					glBindFramebuffer(GL_FRAMEBUFFER, 0);
 					glFlush();
 				}
 			}
-
+			
 			// Render Main Shader
-			glClearColor(0, 0, 0, 1.0);
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			glViewport(0, 0, glWidth, glHeight);
+			glClearColor(0, 0, 0, 0);
 			glClear(GL_COLOR_BUFFER_BIT);
+
+			glUseProgram(glMainShaderProgramID);
 
 			// Load all Basic inputs
 			glUniform3f(glGetUniformLocation(glMainShaderProgramID, "iResolution"), (float) glWidth, (float) glHeight, 0.0);
@@ -992,13 +1220,25 @@ void renderSC() {
 				}
 
 				switch (scResources[scMainShaderInputs[k]].resource.type) {
-					case IMAGE_TEXTURE: { // TODO: Compute input dimensions
-						glUniform3f(glGetUniformLocation(glMainShaderProgramID, iChannelResolutionUniforms[k]), (GLfloat) 0, (GLfloat) 0, (GLfloat) 0);
+					case IMAGE_TEXTURE: {
+
+						// Bind texture
+						// TODO: In parallel rendering use different CL_TEXTURE* to avoid data intersection
+						// TODO: Support for Sampler3D, e.t.c.
+						glActiveTexture(GL_TEXTURE0 + k);
+						glBindTexture(GL_TEXTURE_2D, scResources[scMainShaderInputs[k]].resource.bind);
+						glUniform1i(glGetUniformLocation(glMainShaderProgramID, iChannelUniforms[k]), k);
+
+						// Width & Height 
+						glUniform3f(glGetUniformLocation(glMainShaderProgramID, iChannelResolutionUniforms[k]), (GLfloat) scResources[scMainShaderInputs[k]].resource.width, (GLfloat) scResources[scMainShaderInputs[k]].resource.height, (GLfloat) 0);
+
+						// Timestamp 0
 						glUniform1f(glGetUniformLocation(glMainShaderProgramID, iChannelTimeUniforms[k]), (GLfloat) 0);
+
 						continue;
 					}
 
-					case AUDIO_TEXTURE: {
+					case AUDIO_TEXTURE: { // TODO: Compute input dimensions
 						glUniform3f(glGetUniformLocation(glMainShaderProgramID, iChannelResolutionUniforms[k]), (GLfloat) 0, (GLfloat) 0, (GLfloat) 0);
 						glUniform1f(glGetUniformLocation(glMainShaderProgramID, iChannelTimeUniforms[k]), (GLfloat) 0);
 						continue;
@@ -1028,7 +1268,7 @@ void renderSC() {
 						// TODO: In parallel rendering use different CL_TEXTURE* to avoid data intersection
 						// TODO: Support for Sampler3D, e.t.c.
 						glActiveTexture(GL_TEXTURE0 + k);
-						glBindTexture(GL_TEXTURE_2D, glBufferShaderFramebufferTextures[scResources[scMainShaderInputs[k]].resource.buffer_id]);
+						glBindTexture(GL_TEXTURE_2D, glBufferShaderFramebufferTextures[(scFrames + 1) % 2][scResources[scMainShaderInputs[k]].resource.buffer_id]);
 						glUniform1i(glGetUniformLocation(glMainShaderProgramID, iChannelUniforms[k]), k);
 
 						// Width & Height 
@@ -1042,7 +1282,6 @@ void renderSC() {
 			}
 
 			// Render Main Shader
-			glUseProgram(glMainShaderProgramID);
 			glBindVertexArray(glSquareVAO);
 			glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 			glBindVertexArray(0);
@@ -1144,8 +1383,10 @@ void dispose() {
 			glDeleteProgram(glBufferShaderProgramIDs[i]);
 
 	// Buffer i buffer & texture
-	glDeleteTextures(4, glBufferShaderFramebufferTextures);
-	glDeleteBuffers(4, glBufferShaderFramebuffers);
+	glDeleteTextures(4, glBufferShaderFramebufferTextures[0]);
+	glDeleteTextures(4, glBufferShaderFramebufferTextures[1]);
+	glDeleteBuffers(4, glBufferShaderFramebuffers[0]);
+	glDeleteBuffers(4, glBufferShaderFramebuffers[1]);
 
 	// Square buffer
 	glDeleteVertexArrays(1, &glSquareVAO);
@@ -1255,10 +1496,7 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 	// Tray menu Main shader config
 	HMENU trayMainShaderMenu;
 	// Tray menu buffer shader config
-	HMENU trayMainBufferAShaderMenu;
-	HMENU trayMainBufferBShaderMenu;
-	HMENU trayMainBufferCShaderMenu;
-	HMENU trayMainBufferDShaderMenu;
+	HMENU trayBufferShaderMenu[4];
 	// Tray menu input type selection
 	HMENU trayMainInputTypeMenu;
 
@@ -1357,6 +1595,7 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_SEPARATOR, IDM_SEP, _T("SEP"));
 					//
 
+					// Create menu for Main Shader
 					trayMainInputTypeMenu = CreatePopupMenu();
 					InsertMenu(trayMainInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_INPUT_BUFFER_A, _T("Buffer A"));
 					InsertMenu(trayMainInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_INPUT_BUFFER_B, _T("Buffer B"));
@@ -1370,61 +1609,47 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 
 					trayMainShaderMenu = CreatePopupMenu();
 					InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_OPEN, _T("Open"));
+					if (glMainShaderPath != NULL)
+						InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_OPEN, _T("Reload"));
 					InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_NEW, _T("New")); // TODO: Do we need it?
-					InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 0"));
-					InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 1"));
-					InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 2"));
-					InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 3"));
+					
+					for (int k = 0; k < 4; ++k) {
+						if (scMainShaderInputs[k] == -1 || scResources[scMainShaderInputs[k]].empty)
+							InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, (std::wstring(L"Input ") + std::to_wstring(k)).c_str());
+						else
+							InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, (std::wstring(L"Input ") + std::to_wstring(k) + L": " + resourceToShordDescription(scResources[scMainShaderInputs[k]].resource)).c_str());
+					}
 
-					// TODO: Create new submenu for each buffer / shader and add short info about input type
-					trayMainBufferAShaderMenu = CreatePopupMenu();
-					InsertMenu(trayMainBufferAShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_OPEN, _T("Open"));
-					InsertMenu(trayMainBufferAShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_NEW, _T("New")); // TODO: Do we need it?
-					InsertMenu(trayMainBufferAShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_REMOVE, _T("Remove")); // TODO: Change to "Enabled" and "Paused"? because if it is paused, it is not evaluated on each frame and if it is not enabled, it is removed from pack
-					InsertMenu(trayMainBufferAShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 0")); // TODO: Input preview
-					InsertMenu(trayMainBufferAShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 1"));
-					InsertMenu(trayMainBufferAShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 2"));
-					InsertMenu(trayMainBufferAShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 3"));
-
-					trayMainBufferBShaderMenu = CreatePopupMenu();
-					InsertMenu(trayMainBufferBShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_OPEN, _T("Open"));
-					InsertMenu(trayMainBufferBShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_NEW, _T("New"));
-					InsertMenu(trayMainBufferBShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_REMOVE, _T("Remove"));
-					InsertMenu(trayMainBufferBShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 0")); // TODO: Input preview
-					InsertMenu(trayMainBufferBShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 1"));
-					InsertMenu(trayMainBufferBShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 2"));
-					InsertMenu(trayMainBufferBShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 3"));
-
-					trayMainBufferCShaderMenu = CreatePopupMenu();
-					InsertMenu(trayMainBufferCShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_OPEN, _T("Open"));
-					InsertMenu(trayMainBufferCShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_NEW, _T("New"));
-					InsertMenu(trayMainBufferCShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_REMOVE, _T("Remove"));
-					InsertMenu(trayMainBufferCShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 0")); // TODO: Input preview
-					InsertMenu(trayMainBufferCShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 1"));
-					InsertMenu(trayMainBufferCShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 2"));
-					InsertMenu(trayMainBufferCShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 3"));
-
-					trayMainBufferDShaderMenu = CreatePopupMenu();
-					InsertMenu(trayMainBufferDShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_OPEN, _T("Open"));
-					InsertMenu(trayMainBufferDShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_NEW, _T("New"));
-					InsertMenu(trayMainBufferDShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_REMOVE, _T("Remove"));
-					InsertMenu(trayMainBufferDShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 0")); // TODO: Input preview
-					InsertMenu(trayMainBufferDShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 1"));
-					InsertMenu(trayMainBufferDShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 2"));
-					InsertMenu(trayMainBufferDShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, _T("Input 3"));
+					// Create menu for each Buffer Shader
+					for (int i = 0; i < 4; ++i) {
+						
+						trayBufferShaderMenu[i] = CreatePopupMenu();
+						InsertMenu(trayBufferShaderMenu[i], 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_OPEN, _T("Open"));
+						if (glBufferShaderPath[i] != NULL)
+							InsertMenu(trayBufferShaderMenu[i], 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_OPEN, _T("Reload"));
+						InsertMenu(trayBufferShaderMenu[i], 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_NEW, _T("New")); // TODO: Do we need it?
+						InsertMenu(trayBufferShaderMenu[i], 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_REMOVE, _T("Remove")); // TODO: Change to "Enabled" and "Paused"? because if it is paused, it is not evaluated on each frame and if it is not enabled, it is removed from pack
+						
+						for (int k = 0; k < 4; ++k) {
+							if (scBufferShaderInputs[i][k] == -1 || scResources[scBufferShaderInputs[i][k]].empty)
+								InsertMenu(trayBufferShaderMenu[i], 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, (std::wstring(L"Input ") + std::to_wstring(k)).c_str());
+							else 
+								InsertMenu(trayBufferShaderMenu[i], 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, (std::wstring(L"Input ") + std::to_wstring(k) + L": " + resourceToShordDescription(scResources[scBufferShaderInputs[i][k]].resource)).c_str());
+						}
+					}
 
 					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainShaderMenu, _T("Main shader"));
-					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainBufferAShaderMenu, _T("Buffer A shader"));
-					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainBufferBShaderMenu, _T("Buffer B shader"));
-					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainBufferCShaderMenu, _T("Buffer C shader"));
-					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainBufferDShaderMenu, _T("Buffer D shader"));
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayBufferShaderMenu[0], _T("Buffer A shader"));
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayBufferShaderMenu[1], _T("Buffer B shader"));
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayBufferShaderMenu[2], _T("Buffer C shader"));
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayBufferShaderMenu[3], _T("Buffer D shader"));
 
 					//
 					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_SEPARATOR, IDM_SEP, _T("SEP"));
 					//
 
 					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_DEBUG_WARNINGS, _T("Enable debug output"));
-					if (glDebugOutput)
+					if (wndDebugOutput)
 						CheckMenuItem(trayMainMenu, ID_SYSTRAYMENU_DEBUG_WARNINGS, MF_CHECKED);
 					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_EXIT, _T("Exit"));
 
@@ -1469,7 +1694,17 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 				}
 
 				case ID_SYSTRAYMENU_DEBUG_WARNINGS: {
-					glDebugOutput = !glDebugOutput;
+					if (!wndDebugOutput) {
+						AllocConsole();
+						SetConsoleTitle(L"Debug output");
+						// TODO: Prevent close
+						SetConsoleCtrlHandler(NULL, TRUE);
+						FILE* _frp = freopen("CONOUT$", "w", stdout);
+					} else {
+						ShowWindow(GetConsoleWindow(), SW_HIDE);
+						FreeConsole();
+					}
+					wndDebugOutput = !wndDebugOutput;
 					return TRUE;
 				}
 
@@ -1478,6 +1713,26 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 					renderMutex.lock();
 
 					wglMakeCurrent(glDevice, glContext);
+
+					// Clear buffers
+					for (int i = 0; i < 4; ++i) {
+						
+						// First
+						glBindFramebuffer(GL_FRAMEBUFFER, glBufferShaderFramebuffers[0][i]);
+						glViewport(0, 0, glWidth, glHeight);
+						glClearColor(0, 0, 0, 0);
+						glClear(GL_COLOR_BUFFER_BIT);
+
+						// Second
+						glBindFramebuffer(GL_FRAMEBUFFER, glBufferShaderFramebuffers[1][i]);
+						glViewport(0, 0, glWidth, glHeight);
+						glClearColor(0, 0, 0, 0);
+						glClear(GL_COLOR_BUFFER_BIT);
+
+						glBindFramebuffer(GL_FRAMEBUFFER, 0);
+					}
+
+					// Reset time & frame
 					glfwSetTime(0.0);
 					scTimestamp = 0.0;
 					scFrames = 0;
@@ -1552,6 +1807,8 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 
 						// Check if there is > 0 displays
 						if (displays.size() == 0) {
+
+							std::wcout << "Display not found: Can not display shader decause no displays found on the system" << std::endl;
 							MessageBoxA(
 								NULL,
 								"Can not display shader decause no displays found on the system",
@@ -1592,6 +1849,8 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 
 						// Check if there is > 0 displays
 						if (displays.size() == 0) {
+
+							std::wcout << "Display not found: Can not display shader decause no displays found on the system" << std::endl;
 							MessageBoxA(
 								NULL,
 								"Can not display shader decause no displays found on the system",
@@ -1640,6 +1899,8 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 
 						// Check if there is > 0 displays
 						if (displays.size() == 0) {
+
+							std::wcout << "Display not found: Can not display shader decause no displays found on the system" << std::endl;
 							MessageBoxA(
 								NULL,
 								"Can not display shader decause no displays found on the system",
@@ -1683,6 +1944,8 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 
 						// Check if there is > 0 displays
 						if (displays.size() == 0) {
+
+							std::wcout << "Display not found: Can not display shader decause no displays found on the system" << std::endl;
 							MessageBoxA(
 								NULL,
 								"Can not display shader decause no displays found on the system",
@@ -1735,6 +1998,8 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 
 						// Check if there is > 0 displays
 						if (displays.size() == 0) {
+
+							std::wcout << "Display not found: Can not display shader decause no displays found on the system" << std::endl;
 							MessageBoxA(
 								NULL,
 								"Can not display shader decause no displays found on the system",
@@ -1829,6 +2094,8 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 
 					// Check if there is > 0 displays
 					if (displays.size() == 0) {
+
+						std::wcout << "Display not found: Can not display shader decause no displays found on the system" << std::endl;
 						MessageBoxA(
 							NULL,
 							"Can not display shader decause no displays found on the system",
@@ -1894,6 +2161,18 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 					return TRUE;
 				}
 				
+				case ID_SYSTRAYMENU_RELOAD_INPUTS: {
+					appLockRequested = TRUE;
+					renderMutex.lock();
+					wglMakeCurrent(glDevice, glContext);
+					
+					reloadResources();
+					
+					wglMakeCurrent(NULL, NULL);
+					appLockRequested = FALSE;
+					renderMutex.unlock();
+				}
+
 				default:
 					return DefWindowProc(hWnd, wmId, wParam, lParam);
 			}
@@ -2212,28 +2491,54 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 
 	// DEBUG: Load sample shader and run
 #ifdef DEBUG_LOAD_SHADER_FROM_FILE
-	glDebugOutput = TRUE;
 
-	ShaderCompilationStatus compilationStatus = compileShaderFromFile("shader.glsl"); // compileShader(defaultShader); // compileShaderFromFile("shader.glsl");
-
-	if (!compilationStatus.success) {
-		std::wcout << "You're debugging the thing that doesn't work" << std::endl;
-		system("PAUSE");
-	}  else
-		glMainShaderProgramID = compilationStatus.shaderID;
-
+	// Flags force override
+	wndDebugOutput = TRUE;
 	scMouseEnabled = TRUE;
 	// scPaused = TRUE;
 
+
+	// Resources & shaders
+	SCResource input0;
+	input0.type = IMAGE_TEXTURE;
+	input0.path = std::filesystem::absolute("Data/shrek.png").string();
+
+	SCResource input1;
+	input1.type = FRAME_BUFFER;
+	input1.buffer_id = 0;
+
+	SCResource input2;
+	input2.type = FRAME_BUFFER;
+	input2.buffer_id = 1;
+
+	loadMainShaderFromFile("Data/sandbox0.glsl");
+	loadMainShaderResource(input0, 0); // shrek.png
+	loadMainShaderResource(input1, 1); // Buffer A
+
+
+	loadBufferShaderFromFile("Data/sandbox1.glsl", 0);
+	loadBufferShaderResource(input1, 0, 0); // Buffer A
+
+
+	loadBufferShaderFromFile("Data/sandbox2.glsl", 1);
+	loadBufferShaderResource(input2, 1, 0); // Buffer B
+	loadBufferShaderResource(input0, 1, 1); // shrek.png
+
+
 	// Move to second display
 	currentWindowDimensions = displays[scDisplayID = 1];
-
-	// Window size & location
 	MoveWindow(glWindow, currentWindowDimensions.left, currentWindowDimensions.top, currentWindowDimensions.right - currentWindowDimensions.left, currentWindowDimensions.bottom - currentWindowDimensions.top, TRUE);
-
-	// GL size
 	glWidth = currentWindowDimensions.right - currentWindowDimensions.left;
 	glHeight = currentWindowDimensions.bottom - currentWindowDimensions.top;
+
+
+	//ShaderCompilationStatus compilationStatus = compileShaderFromFile("shader.glsl"); // compileShader(defaultShader); // compileShaderFromFile("shader.glsl");
+	//
+	//if (!compilationStatus.success) {
+	//	std::wcout << "You're debugging the thing that doesn't work" << std::endl;
+	//	system("PAUSE");
+	//}  else
+	//	glMainShaderProgramID = compilationStatus.shaderID;
 
 #endif
 

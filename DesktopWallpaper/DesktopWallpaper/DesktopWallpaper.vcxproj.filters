@@ -44,6 +44,9 @@
     <ClCompile Include="DesktopWallpaper.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="lodepng.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="DesktopWallpaper.rc">

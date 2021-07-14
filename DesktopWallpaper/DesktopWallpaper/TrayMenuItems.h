@@ -52,6 +52,7 @@
 #define IDS_SHADER_INPUT_1	        40505
 #define IDS_SHADER_INPUT_2	        40506
 #define IDS_SHADER_INPUT_3	        40507
+#define IDS_SHADER_RELOAD	        40508
 
 // Submenu for Shader input config
 #define IDS_SHADER_INPUT_BUFFER_A   41001
