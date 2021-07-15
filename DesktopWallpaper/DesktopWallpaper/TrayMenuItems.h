@@ -1,8 +1,11 @@
 #pragma once
 
+// @Deprecated
+
 // Following file contgains definition for Tray menu items
 // Is is used because default VisualStudio resource editor loves 
 //  removing comments and deleting unused definitions
+
 
 // Separator ID
 #define IDM_SEP                                44444

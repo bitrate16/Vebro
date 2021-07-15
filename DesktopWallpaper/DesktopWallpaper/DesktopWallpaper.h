@@ -1,7 +1,7 @@
 #pragma once
 
 #include "resource.h"
-#include "TrayMenuItems.h"
+// Deprecated: #include "TrayMenuItems.h"
 
 #include "WorkerWEnumerator.h"
 

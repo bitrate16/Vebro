@@ -19,5 +19,5 @@ uniform float     iSampleRate;
 out vec4 fragColor;
 
 void main() {
-	fragColor = texture(iChannel0, fragCoord.xy / iResolution.xy);// * texture(iChannel0, fragCoord.xy / iResolution.xy);
+	fragColor = texture(iChannel1, fragCoord.xy / iResolution.xy);// * texture(iChannel0, fragCoord.xy / iResolution.xy);
 }

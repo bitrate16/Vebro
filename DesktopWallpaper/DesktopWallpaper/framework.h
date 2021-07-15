@@ -37,6 +37,7 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <functional>
 
 #include <GL/glew.h>
 #include <GL/gl.h>

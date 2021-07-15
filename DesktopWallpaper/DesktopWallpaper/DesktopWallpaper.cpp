@@ -12,10 +12,35 @@ NOTIFYICONDATA trayNID;
 HWND           trayWindow;
 HICON          trayIcon;
 
+// Main Tray menu
+// Base menu ID
+#define TRAY_MENU_BASE_ID 40001
+
+// Separator
+#define IDM_SEP 40000
+
+// Tray menu object
+HMENU trayMainMenu = 0;
+
+// handlers for functional buttons
+std::vector<std::function<void()>> trayMenuHandlers;
+// // Tray menu for FPS selection
+// HMENU trayFPSSelectMenu = 0;
+// // Tray menu sound source selection
+// HMENU traySoundSourceMenu = 0;
+// // Tray menu Main shader config
+// HMENU trayMainShaderMenu = 0;
+// // Tray menu buffer shader config
+// HMENU trayBufferShaderMenu[4] = { 0, 0, 0, 0 };
+// // Tray menu input type selection
+// HMENU trayMainInputTypeMenu = 0;
+
+
 // >> Displays related
 RECT              fullViewportSize; // Size of displays in total
 std::vector<RECT> rawDisplays;      // List of existing displays' dimensions as raw relative sizes
 std::vector<RECT> displays;         // List of existing displays' dimensions
+
 
 // >> Wallpaper related
 RECT     currentWindowDimensions;
@@ -26,6 +51,7 @@ HGLRC    glContext;
 int      glWidth;
 int      glHeight;
 BOOL     wndDebugOutput = FALSE;
+
 
 // >> OpenGL related
 // Buffers for viewport coords
@@ -1397,6 +1423,9 @@ void dispose() {
 	unloadResources();
 
 	wglMakeCurrent(NULL, NULL);
+
+	if (trayMainMenu != 0)
+		DestroyMenu(trayMainMenu);
 }
 
 
@@ -1485,20 +1514,14 @@ void enumerateDisplays() {
 }
 
 
+int menu0 = 0;
+int menu1 = 0;
+int menu2 = 0;
+int menu3 = 0;
+int menu4 = 0;
+
 // Tray window event dispatcher
 LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) { // TODO: Accelerators &
-	// Main Tray menu
-	HMENU trayMainMenu;
-	// Tray menu for FPS selection
-	HMENU trayFPSSelectMenu;
-	// Tray menu sound source selection
-	HMENU traySoundSourceMenu;
-	// Tray menu Main shader config
-	HMENU trayMainShaderMenu;
-	// Tray menu buffer shader config
-	HMENU trayBufferShaderMenu[4];
-	// Tray menu input type selection
-	HMENU trayMainInputTypeMenu;
 
 	// Event specific info
 	int wmId, wmEvent;
@@ -1512,146 +1535,831 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 				case WM_RBUTTONDOWN: {
 					// Retrieve cursor position and spawn menu in click location
 					GetCursorPos(&lpClickPoint);
+
+					// Free old menu
+					if (trayMainMenu != 0) {
+						DestroyMenu(trayMainMenu);
+						trayMenuHandlers.clear();
+					}
+
+					int menuId = TRAY_MENU_BASE_ID;
 					trayMainMenu = CreatePopupMenu();
 
-					// Build level 0 menu
-					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_MOVETONEXTDISPLAY, _T("Move to next display"));
-					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_MOVETOPREVDISPLAY, _T("Move to prev display"));
-					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_FULLSCREEN, _T("Fullscreen"));
+					// Obviously, build menu
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Move to next display"));
+					trayMenuHandlers.push_back([]() {
+						// Save me from a little duck constantly watching me
+						appLockRequested = TRUE;
+						renderMutex.lock();
+
+						if (scFullscreen) {
+
+							// Always return to the same display
+							// Rescan displays because user may reconnect them
+							enumerateDisplays();
+
+							// Check if there is > 0 displays
+							if (displays.size() == 0) {
+
+								std::wcout << "Display not found: Can not display shader decause no displays found on the system" << std::endl;
+								MessageBoxA(
+									NULL,
+									"Can not display shader decause no displays found on the system",
+									"Display not found",
+									MB_ICONERROR | MB_OK
+								);
+
+								appLockRequested = FALSE;
+								renderMutex.unlock();
+
+								return TRUE;
+							}
+
+							// Ensure no out of bounds
+							if (scDisplayID >= displays.size())
+								scDisplayID = displays.size() - 1;
+
+							currentWindowDimensions = displays[scDisplayID];
+
+							// Window size & location
+							MoveWindow(glWindow, currentWindowDimensions.left, currentWindowDimensions.top, currentWindowDimensions.right - currentWindowDimensions.left, currentWindowDimensions.bottom - currentWindowDimensions.top, TRUE);
+
+							// GL size
+							glWidth = currentWindowDimensions.right - currentWindowDimensions.left;
+							glHeight = currentWindowDimensions.bottom - currentWindowDimensions.top;
+
+							wglMakeCurrent(glDevice, glContext);
+							resizeSC();
+							wglMakeCurrent(NULL, NULL);
+
+							// Update flag (obviously)
+							scFullscreen = FALSE;
+						} else {
+
+							// Rescan displays because user may reconnect them
+							enumerateDisplays();
+
+							// Shift display
+							++scDisplayID;
+
+							// Check if there is > 0 displays
+							if (displays.size() == 0) {
+
+								std::wcout << "Display not found: Can not display shader decause no displays found on the system" << std::endl;
+								MessageBoxA(
+									NULL,
+									"Can not display shader decause no displays found on the system",
+									"Display not found",
+									MB_ICONERROR | MB_OK
+								);
+
+								appLockRequested = FALSE;
+								renderMutex.unlock();
+
+								return TRUE;
+							}
+
+							// Ensure no out of bounds, loop displays
+							if (scDisplayID >= displays.size())
+								scDisplayID = 0;
+
+							currentWindowDimensions = displays[scDisplayID];
+
+							// Window size & location
+							MoveWindow(glWindow, currentWindowDimensions.left, currentWindowDimensions.top, currentWindowDimensions.right - currentWindowDimensions.left, currentWindowDimensions.bottom - currentWindowDimensions.top, TRUE);
+
+							// GL size
+							glWidth = currentWindowDimensions.right - currentWindowDimensions.left;
+							glHeight = currentWindowDimensions.bottom - currentWindowDimensions.top;
+
+							wglMakeCurrent(glDevice, glContext);
+							resizeSC();
+							wglMakeCurrent(NULL, NULL);
+
+							// Update flag (obviously)
+							scFullscreen = FALSE;
+						}
+
+						appLockRequested = FALSE;
+						renderMutex.unlock();
+					});
+					
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Move to prev display"));
+					trayMenuHandlers.push_back([]() {
+						// Save me from a little duck constantly watching me
+						appLockRequested = TRUE;
+						renderMutex.lock();
+
+						if (scFullscreen) {
+
+							// Always return to the same display
+							// Rescan displays because user may reconnect them
+							enumerateDisplays();
+
+							// Check if there is > 0 displays
+							if (displays.size() == 0) {
+
+								std::wcout << "Display not found: Can not display shader decause no displays found on the system" << std::endl;
+								MessageBoxA(
+									NULL,
+									"Can not display shader decause no displays found on the system",
+									"Display not found",
+									MB_ICONERROR | MB_OK
+								);
+
+								appLockRequested = FALSE;
+								renderMutex.unlock();
+
+								return TRUE;
+							}
+
+							// Ensure no out of bounds
+							if (scDisplayID >= displays.size())
+								scDisplayID = displays.size() - 1;
+
+							currentWindowDimensions = displays[scDisplayID];
+
+							// Window size & location
+							MoveWindow(glWindow, currentWindowDimensions.left, currentWindowDimensions.top, currentWindowDimensions.right - currentWindowDimensions.left, currentWindowDimensions.bottom - currentWindowDimensions.top, TRUE);
+
+							// GL size
+							glWidth = currentWindowDimensions.right - currentWindowDimensions.left;
+							glHeight = currentWindowDimensions.bottom - currentWindowDimensions.top;
+
+							wglMakeCurrent(glDevice, glContext);
+							resizeSC();
+							wglMakeCurrent(NULL, NULL);
+
+							// Update flag (obviously)
+							scFullscreen = FALSE;
+
+						} else {
+
+							// Rescan displays because user may reconnect them
+							enumerateDisplays();
+
+							// Shift display
+							--scDisplayID;
+
+							// Check if there is > 0 displays
+							if (displays.size() == 0) {
+								MessageBoxA(
+									NULL,
+									"Can not display shader decause no displays found on the system",
+									"Display not found",
+									MB_ICONERROR | MB_OK
+								);
+
+								appLockRequested = FALSE;
+								renderMutex.unlock();
+
+								return TRUE;
+							}
+
+							// Ensure no out of bounds, loop displays
+							if (scDisplayID < 0)
+								scDisplayID = displays.size() - 1;
+
+							if (scDisplayID >= displays.size())
+								scDisplayID = displays.size() - 1;
+
+							currentWindowDimensions = displays[scDisplayID];
+
+							// Window size & location
+							MoveWindow(glWindow, currentWindowDimensions.left, currentWindowDimensions.top, currentWindowDimensions.right - currentWindowDimensions.left, currentWindowDimensions.bottom - currentWindowDimensions.top, TRUE);
+
+							// GL size
+							glWidth = currentWindowDimensions.right - currentWindowDimensions.left;
+							glHeight = currentWindowDimensions.bottom - currentWindowDimensions.top;
+
+							wglMakeCurrent(glDevice, glContext);
+							resizeSC();
+							wglMakeCurrent(NULL, NULL);
+
+							// Update flag (obviously)
+							scFullscreen = FALSE;
+						}
+
+						appLockRequested = FALSE;
+						renderMutex.unlock();
+					});
+					
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId, _T("Fullscreen"));
+					trayMenuHandlers.push_back([]() {
+						appLockRequested = TRUE;
+						renderMutex.lock();
+
+						if (scFullscreen) {
+
+							// Rescan displays because user may reconnect them
+							enumerateDisplays();
+
+							// Check if there is > 0 displays
+							if (displays.size() == 0) {
+
+								std::wcout << "Display not found: Can not display shader decause no displays found on the system" << std::endl;
+								MessageBoxA(
+									NULL,
+									"Can not display shader decause no displays found on the system",
+									"Display not found",
+									MB_ICONERROR | MB_OK
+								);
+
+								appLockRequested = FALSE;
+								renderMutex.unlock();
+
+								return TRUE;
+							}
+
+							// Ensure no out of bounds
+							if (scDisplayID >= displays.size())
+								scDisplayID = displays.size() - 1;
+
+							currentWindowDimensions = displays[scDisplayID];
+
+							// Window size & location
+							MoveWindow(glWindow, currentWindowDimensions.left, currentWindowDimensions.top, currentWindowDimensions.right - currentWindowDimensions.left, currentWindowDimensions.bottom - currentWindowDimensions.top, TRUE);
+
+							// GL size
+							glWidth = currentWindowDimensions.right - currentWindowDimensions.left;
+							glHeight = currentWindowDimensions.bottom - currentWindowDimensions.top;
+
+							wglMakeCurrent(glDevice, glContext);
+							resizeSC();
+							wglMakeCurrent(NULL, NULL);
+
+							// Update flag (obviously)
+							scFullscreen = FALSE;
+
+						} else {
+
+							// Rescan displays because user may reconnect them
+							enumerateDisplays();
+
+							// Check if there is > 0 displays
+							if (displays.size() == 0) {
+
+								std::wcout << "Display not found: Can not display shader decause no displays found on the system" << std::endl;
+								MessageBoxA(
+									NULL,
+									"Can not display shader decause no displays found on the system",
+									"Display not found",
+									MB_ICONERROR | MB_OK
+								);
+
+								appLockRequested = FALSE;
+								renderMutex.unlock();
+
+								return TRUE;
+							}
+
+							currentWindowDimensions = fullViewportSize;
+
+							// Window size & location
+							MoveWindow(glWindow, currentWindowDimensions.left, currentWindowDimensions.top, currentWindowDimensions.right - currentWindowDimensions.left, currentWindowDimensions.bottom - currentWindowDimensions.top, TRUE);
+
+							// GL size
+							glWidth = currentWindowDimensions.right - currentWindowDimensions.left;
+							glHeight = currentWindowDimensions.bottom - currentWindowDimensions.top;
+
+							wglMakeCurrent(glDevice, glContext);
+							resizeSC();
+							wglMakeCurrent(NULL, NULL);
+
+							// Update flag (obviously)
+							scFullscreen = TRUE;
+						}
+
+						appLockRequested = FALSE;
+						renderMutex.unlock();
+					});
 					if (scFullscreen)
-						CheckMenuItem(trayMainMenu, ID_SYSTRAYMENU_FULLSCREEN, MF_CHECKED);
-					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_RESCAN_DISPLAYS, _T("Rescan displays"));
+						CheckMenuItem(trayMainMenu, menuId, MF_CHECKED);
+					++menuId;
+					
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Rescan displays"));
+					trayMenuHandlers.push_back([]() {
+						appLockRequested = TRUE;
+						renderMutex.lock();
+
+						// Rescan displays because user may reconnect them
+						enumerateDisplays();
+
+						// Check if there is > 0 displays
+						if (displays.size() == 0) {
+
+							std::wcout << "Display not found: Can not display shader decause no displays found on the system" << std::endl;
+							MessageBoxA(
+								NULL,
+								"Can not display shader decause no displays found on the system",
+								"Display not found",
+								MB_ICONERROR | MB_OK
+							);
+
+							appLockRequested = FALSE;
+							renderMutex.unlock();
+
+							return TRUE;
+						}
+
+						if (scFullscreen) {
+
+							currentWindowDimensions = fullViewportSize;
+
+							// Window size & location
+							MoveWindow(glWindow, currentWindowDimensions.left, currentWindowDimensions.top, currentWindowDimensions.right - currentWindowDimensions.left, currentWindowDimensions.bottom - currentWindowDimensions.top, TRUE);
+
+							// GL size
+							int nglWidth = currentWindowDimensions.right - currentWindowDimensions.left;
+							int nglHeight = currentWindowDimensions.bottom - currentWindowDimensions.top;
+
+							// Resize context and textures only if there is a size mismatch
+							if (nglWidth != glWidth || nglHeight != glHeight) {
+								glWidth = nglWidth;
+								glHeight = nglHeight;
+
+								wglMakeCurrent(glDevice, glContext);
+								resizeSC();
+								wglMakeCurrent(NULL, NULL);
+							}
+
+						} else {
+
+							// Ensure no out of bounds, loop displays
+							if (scDisplayID >= displays.size())
+								scDisplayID = 0;
+
+							currentWindowDimensions = displays[scDisplayID];
+
+							// Window size & location
+							MoveWindow(glWindow, currentWindowDimensions.left, currentWindowDimensions.top, currentWindowDimensions.right - currentWindowDimensions.left, currentWindowDimensions.bottom - currentWindowDimensions.top, TRUE);
+
+							// GL size
+							int nglWidth = currentWindowDimensions.right - currentWindowDimensions.left;
+							int nglHeight = currentWindowDimensions.bottom - currentWindowDimensions.top;
+
+							// Resize context and textures only if there is a size mismatch
+							if (nglWidth != glWidth || nglHeight != glHeight) {
+								glWidth = nglWidth;
+								glHeight = nglHeight;
+
+								wglMakeCurrent(glDevice, glContext);
+								resizeSC();
+								wglMakeCurrent(NULL, NULL);
+							}
+						}
+
+						appLockRequested = FALSE;
+						renderMutex.unlock();
+					});
 
 					//
 					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_SEPARATOR, IDM_SEP, _T("SEP"));
 					//
 
-					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_PAUSE, _T("Pause"));
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId, _T("Pause"));
+					trayMenuHandlers.push_back([]() {
+						if (scPaused) {
+							appLockRequested = TRUE;
+							renderMutex.lock();
+
+							// Restore timestamp
+							wglMakeCurrent(glDevice, glContext);
+							glfwSetTime(scTimestamp);
+							wglMakeCurrent(NULL, NULL);
+
+							appLockRequested = FALSE;
+							renderMutex.unlock();
+						}
+
+						scPaused = !scPaused;
+					});
 					if (scPaused)
-						CheckMenuItem(trayMainMenu, ID_SYSTRAYMENU_PAUSE, MF_CHECKED);
-					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_RESET_TIME, _T("Reset time"));
-					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_RELOAD_INPUTS, _T("Reload inputs"));
-					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_RELOAD_PACK, _T("Reload pack"));
+						CheckMenuItem(trayMainMenu, menuId, MF_CHECKED);
+					++menuId;
+
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Reset time"));
+					trayMenuHandlers.push_back([]() {
+						appLockRequested = TRUE;
+						renderMutex.lock();
+
+						wglMakeCurrent(glDevice, glContext);
+
+						// Clear buffers
+						for (int i = 0; i < 4; ++i) {
+
+							// First
+							glBindFramebuffer(GL_FRAMEBUFFER, glBufferShaderFramebuffers[0][i]);
+							glViewport(0, 0, glWidth, glHeight);
+							glClearColor(0, 0, 0, 0);
+							glClear(GL_COLOR_BUFFER_BIT);
+
+							// Second
+							glBindFramebuffer(GL_FRAMEBUFFER, glBufferShaderFramebuffers[1][i]);
+							glViewport(0, 0, glWidth, glHeight);
+							glClearColor(0, 0, 0, 0);
+							glClear(GL_COLOR_BUFFER_BIT);
+
+							glBindFramebuffer(GL_FRAMEBUFFER, 0);
+						}
+
+						// Reset time & frame
+						glfwSetTime(0.0);
+						scTimestamp = 0.0;
+						scFrames = 0;
+						wglMakeCurrent(NULL, NULL);
+
+						appLockRequested = FALSE;
+						renderMutex.unlock();
+					});
+
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Reload inputs"));
+					trayMenuHandlers.push_back([]() {
+						appLockRequested = TRUE;
+						renderMutex.lock();
+						wglMakeCurrent(glDevice, glContext);
+
+						reloadResources();
+
+						wglMakeCurrent(NULL, NULL);
+						appLockRequested = FALSE;
+						renderMutex.unlock();
+					});
+
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Reload pack"));
+					trayMenuHandlers.push_back([]() {
+						std::wcout << "Incomplete :: Reload pack" << std::endl;
+					});
 
 					//
 					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_SEPARATOR, IDM_SEP, _T("SEP"));
 					//
 
-					trayFPSSelectMenu = CreatePopupMenu();
-					InsertMenu(trayFPSSelectMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_FPS_SUBMENU + 1, _T("1 FPS"));
-					InsertMenu(trayFPSSelectMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_FPS_SUBMENU + 2, _T("15 FPS"));
-					InsertMenu(trayFPSSelectMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_FPS_SUBMENU + 3, _T("30 FPS"));
-					InsertMenu(trayFPSSelectMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_FPS_SUBMENU + 4, _T("60 FPS"));
-					InsertMenu(trayFPSSelectMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_FPS_SUBMENU + 5, _T("120 FPS"));
+					HMENU trayFPSSelectMenu = CreatePopupMenu();
+					InsertMenu(trayFPSSelectMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("1 FPS"));
+					trayMenuHandlers.push_back([]() {
+						scMinFrameTime = 1000;
+						scFPSMode = 1;
+					});
+
+					InsertMenu(trayFPSSelectMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("15 FPS"));
+					trayMenuHandlers.push_back([]() {
+						scMinFrameTime = 1000 / 15;
+						scFPSMode = 15;
+					});
+
+					InsertMenu(trayFPSSelectMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("30 FPS"));
+					trayMenuHandlers.push_back([]() {
+						scMinFrameTime = 1000 / 30;
+						scFPSMode = 30;
+					});
+
+					InsertMenu(trayFPSSelectMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("60 FPS"));
+					trayMenuHandlers.push_back([]() {
+						scMinFrameTime = 1000 / 60;
+						scFPSMode = 60;
+					});
+
+					InsertMenu(trayFPSSelectMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("120 FPS"));
+					trayMenuHandlers.push_back([]() {
+						scMinFrameTime = 1000 / 120;
+						scFPSMode = 120;
+					});
 
 					// IDK how to concat and use this LPWSTRPTR shit
 					if (scFPSMode == 1) {
 						InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayFPSSelectMenu, _T("FPS (1)"));
-						CheckMenuItem(trayFPSSelectMenu, ID_SYSTRAYMENU_FPS_SUBMENU + 1, MF_CHECKED);
+						CheckMenuItem(trayFPSSelectMenu, menuId - 5, MF_CHECKED);
 					} else if (scFPSMode == 15) {
 						InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayFPSSelectMenu, _T("FPS (15)"));
-						CheckMenuItem(trayFPSSelectMenu, ID_SYSTRAYMENU_FPS_SUBMENU + 2, MF_CHECKED);
+						CheckMenuItem(trayFPSSelectMenu, menuId - 4, MF_CHECKED);
 					} else if (scFPSMode == 30) {
 						InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayFPSSelectMenu, _T("FPS (30)"));
-						CheckMenuItem(trayFPSSelectMenu, ID_SYSTRAYMENU_FPS_SUBMENU + 3, MF_CHECKED);
+						CheckMenuItem(trayFPSSelectMenu, menuId - 3, MF_CHECKED);
 					} else if (scFPSMode == 60) {
 						InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayFPSSelectMenu, _T("FPS (60)"));
-						CheckMenuItem(trayFPSSelectMenu, ID_SYSTRAYMENU_FPS_SUBMENU + 4, MF_CHECKED);
+						CheckMenuItem(trayFPSSelectMenu, menuId - 2, MF_CHECKED);
 					} else{ // scFPSMode == 120
 						InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayFPSSelectMenu, _T("FPS (120)"));
-						CheckMenuItem(trayFPSSelectMenu, ID_SYSTRAYMENU_FPS_SUBMENU + 5, MF_CHECKED);
+						CheckMenuItem(trayFPSSelectMenu, menuId - 1, MF_CHECKED);
 					}
 
 					//
 					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_SEPARATOR, IDM_SEP, _T("SEP"));
 					//
 
-					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_SOUND_MODE, _T("Enable sound capture"));
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId, _T("Enable sound capture"));
+					trayMenuHandlers.push_back([]() {
+						appLockRequested = TRUE;
+						renderMutex.lock();
+
+						scSoundEnabled = !scSoundEnabled;
+
+						appLockRequested = FALSE;
+						renderMutex.unlock();
+					});
 					if (scSoundEnabled)
-						CheckMenuItem(trayMainMenu, ID_SYSTRAYMENU_SOUND_MODE, MF_CHECKED);
+						CheckMenuItem(trayMainMenu, menuId, MF_CHECKED);
+					++menuId;
 
 					// TODO: Enumerate sound inputs as submenu items + add selection mark
-					traySoundSourceMenu = CreatePopupMenu();
-					InsertMenu(traySoundSourceMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_SOUND_SOURCE + 1, _T("Low definition audio device"));
-					InsertMenu(traySoundSourceMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_SOUND_SOURCE + 2, _T("Micwofone"));
-					InsertMenu(traySoundSourceMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_SOUND_SOURCE + 3, _T("Moan box"));
-					CheckMenuItem(traySoundSourceMenu, ID_SYSTRAYMENU_SOUND_SOURCE + 3, MF_CHECKED);
+					HMENU traySoundSourceMenu = CreatePopupMenu();
+
+					const wchar_t* sources[3] = {
+						L"Low definition audio device",
+						L"Micwofone", 
+						L"Moan box"
+					};
+
+					int sourceSelectionId = 2;
+
+					for (int index = 0; index < 3; ++index) {
+						InsertMenu(traySoundSourceMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId, sources[index]);
+						trayMenuHandlers.push_back([index]() {
+							std::wcout << "Incomplete :: Sound source sub :: " << index << std::endl;
+						});
+						if (index == sourceSelectionId)
+							CheckMenuItem(traySoundSourceMenu, menuId, MF_CHECKED);
+						++menuId;
+					}
 
 					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) traySoundSourceMenu, _T("Sound source"));
-					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_MOUSE_MODE, _T("Enable mouse"));
+
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId, _T("Enable mouse"));
+					trayMenuHandlers.push_back([]() {
+						appLockRequested = TRUE;
+						renderMutex.lock();
+
+						scMouseEnabled = !scMouseEnabled;
+
+						appLockRequested = FALSE;
+						renderMutex.unlock();
+					});
 					if (scMouseEnabled)
-						CheckMenuItem(trayMainMenu, ID_SYSTRAYMENU_MOUSE_MODE, MF_CHECKED);
+						CheckMenuItem(trayMainMenu, menuId, MF_CHECKED);
+					++menuId;
 
 					//
 					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_SEPARATOR, IDM_SEP, _T("SEP"));
 					//
 
-					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_OPEN_PACK, _T("Open pack"));
-					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_SAVE_PACK, _T("Save pack"));
-					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_SAVE_PACK_AS, _T("Save pack as"));
-					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_NEW_PACK, _T("New pack"));
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Open pack"));
+					trayMenuHandlers.push_back([]() {
+						std::wcout << "Incomplete :: Open pack" << std::endl;
+					});
+
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Save pack"));
+					trayMenuHandlers.push_back([]() {
+						std::wcout << "Incomplete :: Save pack" << std::endl;
+					});
+
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Save pack as"));
+					trayMenuHandlers.push_back([]() {
+						std::wcout << "Incomplete :: Save pack as" << std::endl;
+					});
+
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("New pack"));
+					trayMenuHandlers.push_back([]() {
+						std::wcout << "Incomplete :: New pack" << std::endl;
+					});
 
 					//
 					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_SEPARATOR, IDM_SEP, _T("SEP"));
 					//
 
 					// Create menu for Main Shader
-					trayMainInputTypeMenu = CreatePopupMenu();
-					InsertMenu(trayMainInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_INPUT_BUFFER_A, _T("Buffer A"));
-					InsertMenu(trayMainInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_INPUT_BUFFER_B, _T("Buffer B"));
-					InsertMenu(trayMainInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_INPUT_BUFFER_C, _T("Buffer C"));
-					InsertMenu(trayMainInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_INPUT_BUFFER_D, _T("Buffer D"));
-					InsertMenu(trayMainInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_INPUT_IMAGE, _T("Image"));
-					InsertMenu(trayMainInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_INPUT_MICROPHONE, _T("Microphone"));
-					InsertMenu(trayMainInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_INPUT_AUDIO, _T("Audio file"));
-					InsertMenu(trayMainInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_INPUT_VIDEO, _T("Video file"));
-					InsertMenu(trayMainInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_INPUT_WEBCAM, _T("Webcam"));
 
-					trayMainShaderMenu = CreatePopupMenu();
-					InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_OPEN, _T("Open"));
-					if (glMainShaderPath != NULL)
-						InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_OPEN, _T("Reload"));
-					InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_NEW, _T("New")); // TODO: Do we need it?
-					
-					for (int k = 0; k < 4; ++k) {
-						if (scMainShaderInputs[k] == -1 || scResources[scMainShaderInputs[k]].empty)
-							InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, (std::wstring(L"Input ") + std::to_wstring(k)).c_str());
-						else
-							InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, (std::wstring(L"Input ") + std::to_wstring(k) + L": " + resourceToShordDescription(scResources[scMainShaderInputs[k]].resource)).c_str());
+					HMENU trayMainShaderMenu = CreatePopupMenu();
+
+					InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Open"));
+					trayMenuHandlers.push_back([]() {
+						std::wcout << "Incomplete :: Open Main Shader" << std::endl;
+					});
+
+					if (glMainShaderPath != NULL) {
+						InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Reload"));
+						trayMenuHandlers.push_back([]() {
+							std::wcout << "Incomplete :: Reload Main Shader" << std::endl;
+						});
 					}
+
+					InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("New")); // TODO: Do we need it?
+					trayMenuHandlers.push_back([]() {
+						std::wcout << "Incomplete :: New Main Shader" << std::endl;
+					});
+					
+					for (int inputId = 0; inputId < 4; ++inputId) {
+
+						HMENU trayMainInputTypeMenu = CreatePopupMenu();
+
+						InsertMenu(trayMainInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Buffer A"));
+						trayMenuHandlers.push_back([inputId]() {
+							SCResource input;
+							input.type = FRAME_BUFFER;
+							input.buffer_id = 0;
+
+							loadMainShaderResource(input, inputId);
+						});
+
+						InsertMenu(trayMainInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Buffer B"));
+						trayMenuHandlers.push_back([inputId]() {
+							SCResource input;
+							input.type = FRAME_BUFFER;
+							input.buffer_id = 1;
+
+							loadMainShaderResource(input, inputId);
+						});
+
+						InsertMenu(trayMainInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Buffer C"));
+						trayMenuHandlers.push_back([inputId]() {
+							SCResource input;
+							input.type = FRAME_BUFFER;
+							input.buffer_id = 2;
+
+							loadMainShaderResource(input, inputId);
+						});
+
+						InsertMenu(trayMainInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Buffer D"));
+						trayMenuHandlers.push_back([inputId]() {
+							SCResource input;
+							input.type = FRAME_BUFFER;
+							input.buffer_id = 3;
+
+							loadMainShaderResource(input, inputId);
+						});
+
+						InsertMenu(trayMainInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Image"));
+						trayMenuHandlers.push_back([inputId]() {
+							std::wcout << "Incomplete :: Main Shader :: Set input " << inputId << " :: Image" << std::endl;
+						});
+
+						InsertMenu(trayMainInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Microphone"));
+						trayMenuHandlers.push_back([inputId]() {
+							std::wcout << "Incomplete :: Main Shader :: Set input " << inputId << " :: Nicrophone" << std::endl;
+						});
+
+						InsertMenu(trayMainInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Audio file"));
+						trayMenuHandlers.push_back([inputId]() {
+							std::wcout << "Incomplete :: Main Shader :: Set input " << inputId << " :: Audio" << std::endl;
+						});
+
+						InsertMenu(trayMainInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Video file"));
+						trayMenuHandlers.push_back([inputId]() {
+							std::wcout << "Incomplete :: Main Shader :: Set input " << inputId << " :: Video" << std::endl;
+						});
+
+						InsertMenu(trayMainInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Webcam"));
+						trayMenuHandlers.push_back([inputId]() {
+							std::wcout << "Incomplete :: Main Shader :: Set input " << inputId << " :: Webcam" << std::endl;
+						});
+
+
+						if (scMainShaderInputs[inputId] == -1 || scResources[scMainShaderInputs[inputId]].empty)
+							InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, (std::wstring(L"Input ") + std::to_wstring(inputId)).c_str());
+						else
+							InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, (std::wstring(L"Input ") + std::to_wstring(inputId) + L": " + resourceToShordDescription(scResources[scMainShaderInputs[inputId]].resource)).c_str());
+					}
+
+					// Insert this menu, yes
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainShaderMenu, _T("Main shader"));
 
 					// Create menu for each Buffer Shader
-					for (int i = 0; i < 4; ++i) {
+					for (int bufferId = 0; bufferId < 4; ++bufferId) {
 						
-						trayBufferShaderMenu[i] = CreatePopupMenu();
-						InsertMenu(trayBufferShaderMenu[i], 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_OPEN, _T("Open"));
-						if (glBufferShaderPath[i] != NULL)
-							InsertMenu(trayBufferShaderMenu[i], 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_OPEN, _T("Reload"));
-						InsertMenu(trayBufferShaderMenu[i], 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_NEW, _T("New")); // TODO: Do we need it?
-						InsertMenu(trayBufferShaderMenu[i], 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, IDS_SHADER_REMOVE, _T("Remove")); // TODO: Change to "Enabled" and "Paused"? because if it is paused, it is not evaluated on each frame and if it is not enabled, it is removed from pack
-						
-						for (int k = 0; k < 4; ++k) {
-							if (scBufferShaderInputs[i][k] == -1 || scResources[scBufferShaderInputs[i][k]].empty)
-								InsertMenu(trayBufferShaderMenu[i], 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, (std::wstring(L"Input ") + std::to_wstring(k)).c_str());
-							else 
-								InsertMenu(trayBufferShaderMenu[i], 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainInputTypeMenu, (std::wstring(L"Input ") + std::to_wstring(k) + L": " + resourceToShordDescription(scResources[scBufferShaderInputs[i][k]].resource)).c_str());
-						}
-					}
+						HMENU trayBufferShaderMenu = CreatePopupMenu();
 
-					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainShaderMenu, _T("Main shader"));
-					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayBufferShaderMenu[0], _T("Buffer A shader"));
-					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayBufferShaderMenu[1], _T("Buffer B shader"));
-					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayBufferShaderMenu[2], _T("Buffer C shader"));
-					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayBufferShaderMenu[3], _T("Buffer D shader"));
+						InsertMenu(trayBufferShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Open"));
+						trayMenuHandlers.push_back([bufferId]() {
+							std::wcout << "Incomplete :: Open Buffer " << bufferId << " Shader" << std::endl;
+						});
+
+						if (glBufferShaderPath[bufferId] != NULL) {
+							InsertMenu(trayBufferShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Reload"));
+							trayMenuHandlers.push_back([bufferId]() {
+								std::wcout << "Incomplete :: Reload Buffer " << bufferId << " Shader" << std::endl;
+							});
+						}
+
+						InsertMenu(trayBufferShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("New")); // TODO: Do we need it?
+						trayMenuHandlers.push_back([bufferId]() {
+							std::wcout << "Incomplete :: New Buffer " << bufferId << " Shader" << std::endl;
+						});
+						
+						if (glBufferShaderPath[bufferId] != NULL) {
+							InsertMenu(trayBufferShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Remove")); // TODO: Change to "Enabled" and "Paused"? because if it is paused, it is not evaluated on each frame and if it is not enabled, it is removed from pack
+							trayMenuHandlers.push_back([bufferId]() {
+								std::wcout << "Incomplete :: Remove Buffer " << bufferId << " Shader" << std::endl;
+							});
+						}
+
+						for (int inputId = 0; inputId < 4; ++inputId) {
+
+							HMENU trayBufferInputTypeMenu = CreatePopupMenu();
+
+							InsertMenu(trayBufferInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Buffer A"));
+							trayMenuHandlers.push_back([bufferId, inputId]() {
+								SCResource input;
+								input.type = FRAME_BUFFER;
+								input.buffer_id = 0;
+
+								loadBufferShaderResource(input, bufferId, inputId);
+							});
+
+							InsertMenu(trayBufferInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Buffer B"));
+							trayMenuHandlers.push_back([bufferId, inputId]() {
+								SCResource input;
+								input.type = FRAME_BUFFER;
+								input.buffer_id = 1;
+
+								loadBufferShaderResource(input, bufferId, inputId);
+							});
+
+							InsertMenu(trayBufferInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Buffer C"));
+							trayMenuHandlers.push_back([bufferId, inputId]() {
+								SCResource input;
+								input.type = FRAME_BUFFER;
+								input.buffer_id = 2;
+
+								loadBufferShaderResource(input, bufferId, inputId);
+							});
+
+							InsertMenu(trayBufferInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Buffer D"));
+							trayMenuHandlers.push_back([bufferId, inputId]() {
+								SCResource input;
+								input.type = FRAME_BUFFER;
+								input.buffer_id = 3;
+
+								loadBufferShaderResource(input, bufferId, inputId);
+							});
+
+							InsertMenu(trayBufferInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Image"));
+							trayMenuHandlers.push_back([bufferId, inputId]() {
+								std::wcout << "Incomplete :: Buffer " << bufferId << " :: Set input " << inputId << " :: Image" << std::endl;
+							});
+
+							InsertMenu(trayBufferInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Microphone"));
+							trayMenuHandlers.push_back([bufferId, inputId]() {
+								std::wcout << "Incomplete :: Buffer " << bufferId << " :: Set input " << inputId << " :: Microphone" << std::endl;
+							});
+
+							InsertMenu(trayBufferInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Audio file"));
+							trayMenuHandlers.push_back([bufferId, inputId]() {
+								std::wcout << "Incomplete :: Buffer " << bufferId << " :: Set input " << inputId << " :: Audio" << std::endl;
+							});
+
+							InsertMenu(trayBufferInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Video file"));
+							trayMenuHandlers.push_back([bufferId, inputId]() {
+								std::wcout << "Incomplete :: Buffer " << bufferId << " :: Set input " << inputId << " :: Video" << std::endl;
+							});
+
+							InsertMenu(trayBufferInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Webcam"));
+							trayMenuHandlers.push_back([bufferId, inputId]() {
+								std::wcout << "Incomplete :: Buffer " << bufferId << " :: Set input " << inputId << " :: Webcam" << std::endl;
+							});
+
+							if (scBufferShaderInputs[bufferId][inputId] == -1 || scResources[scBufferShaderInputs[bufferId][inputId]].empty)
+								InsertMenu(trayBufferShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayBufferInputTypeMenu, (std::wstring(L"Input ") + std::to_wstring(inputId)).c_str());
+							else 
+								InsertMenu(trayBufferShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayBufferInputTypeMenu, (std::wstring(L"Input ") + std::to_wstring(inputId) + L": " + resourceToShordDescription(scResources[scBufferShaderInputs[bufferId][inputId]].resource)).c_str());
+						}
+
+						const wchar_t* menuEntry[4] = {
+							L"Buffer A shader",
+							L"Buffer B shader",
+							L"Buffer C shader",
+							L"Buffer D shader"
+						};
+
+						// Insert that menu, no
+						InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayBufferShaderMenu, menuEntry[bufferId]);
+					}
 
 					//
 					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_SEPARATOR, IDM_SEP, _T("SEP"));
 					//
 
-					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_DEBUG_WARNINGS, _T("Enable debug output"));
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId, _T("Enable debug console"));
+					trayMenuHandlers.push_back([]() {
+						if (!wndDebugOutput) {
+							AllocConsole();
+							SetConsoleTitle(L"Debug output");
+							// TODO: Prevent close
+							SetConsoleCtrlHandler(NULL, TRUE);
+							FILE* _frp = freopen("CONOUT$", "w", stdout);
+						} else {
+							ShowWindow(GetConsoleWindow(), SW_HIDE);
+							FreeConsole();
+						}
+						wndDebugOutput = !wndDebugOutput;
+					});
 					if (wndDebugOutput)
-						CheckMenuItem(trayMainMenu, ID_SYSTRAYMENU_DEBUG_WARNINGS, MF_CHECKED);
-					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, ID_SYSTRAYMENU_EXIT, _T("Exit"));
+						CheckMenuItem(trayMainMenu, menuId, MF_CHECKED);
+					++menuId;
+
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Exit"));
+					trayMenuHandlers.push_back([]() {
+						PostQuitMessage(0);
+					});
 
 					// Display menu, finally
 					SetForegroundWindow(hWnd);
@@ -1669,513 +2377,22 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 			wmId = LOWORD(wParam);
 			wmEvent = HIWORD(wParam);
 
-			switch (wmId) {
-				case ID_SYSTRAYMENU_EXIT: {
-					PostQuitMessage(0);
+			// Validates bounds (If there will be more than one menu in the future, idk)
+			if (wmId >= TRAY_MENU_BASE_ID) {
+
+				int handlerId = wmId - TRAY_MENU_BASE_ID;
+
+				// Hey I just met you
+				// And this is crazy
+				// But here's my handle
+				// So call me maybe
+				if (handlerId >= 0 && handlerId < trayMenuHandlers.size()) {
+					trayMenuHandlers[handlerId]();
 					return TRUE;
 				}
-
-				case ID_SYSTRAYMENU_PAUSE: {
-					if (scPaused) {
-						appLockRequested = TRUE;
-						renderMutex.lock();
-
-						// Restore timestamp
-						wglMakeCurrent(glDevice, glContext);
-						glfwSetTime(scTimestamp);
-						wglMakeCurrent(NULL, NULL);
-
-						appLockRequested = FALSE;
-						renderMutex.unlock();
-					}
-
-					scPaused = !scPaused;
-					return TRUE;
-				}
-
-				case ID_SYSTRAYMENU_DEBUG_WARNINGS: {
-					if (!wndDebugOutput) {
-						AllocConsole();
-						SetConsoleTitle(L"Debug output");
-						// TODO: Prevent close
-						SetConsoleCtrlHandler(NULL, TRUE);
-						FILE* _frp = freopen("CONOUT$", "w", stdout);
-					} else {
-						ShowWindow(GetConsoleWindow(), SW_HIDE);
-						FreeConsole();
-					}
-					wndDebugOutput = !wndDebugOutput;
-					return TRUE;
-				}
-
-				case ID_SYSTRAYMENU_RESET_TIME: {
-					appLockRequested = TRUE;
-					renderMutex.lock();
-
-					wglMakeCurrent(glDevice, glContext);
-
-					// Clear buffers
-					for (int i = 0; i < 4; ++i) {
-						
-						// First
-						glBindFramebuffer(GL_FRAMEBUFFER, glBufferShaderFramebuffers[0][i]);
-						glViewport(0, 0, glWidth, glHeight);
-						glClearColor(0, 0, 0, 0);
-						glClear(GL_COLOR_BUFFER_BIT);
-
-						// Second
-						glBindFramebuffer(GL_FRAMEBUFFER, glBufferShaderFramebuffers[1][i]);
-						glViewport(0, 0, glWidth, glHeight);
-						glClearColor(0, 0, 0, 0);
-						glClear(GL_COLOR_BUFFER_BIT);
-
-						glBindFramebuffer(GL_FRAMEBUFFER, 0);
-					}
-
-					// Reset time & frame
-					glfwSetTime(0.0);
-					scTimestamp = 0.0;
-					scFrames = 0;
-					wglMakeCurrent(NULL, NULL);
-
-					appLockRequested = FALSE;
-					renderMutex.unlock();
-					return TRUE;
-				}
-
-				case ID_SYSTRAYMENU_MOUSE_MODE: {
-					appLockRequested = TRUE;
-					renderMutex.lock();
-					
-					scMouseEnabled = !scMouseEnabled;
-
-					appLockRequested = FALSE;
-					renderMutex.unlock();
-					return TRUE;
-				}
-
-				case ID_SYSTRAYMENU_SOUND_MODE: {
-					appLockRequested = TRUE;
-					renderMutex.lock();
-
-					scSoundEnabled = !scSoundEnabled;
-
-					appLockRequested = FALSE;
-					renderMutex.unlock();
-					return TRUE;
-				}
-
-				// There could be more beautiful code, but i was lazy in this menu entry
-				case ID_SYSTRAYMENU_FPS_SUBMENU + 1: { // 1
-					scMinFrameTime = 1000;
-					scFPSMode = 1;
-					return TRUE;
-				}
-
-				case ID_SYSTRAYMENU_FPS_SUBMENU + 2: { // 15
-					scMinFrameTime = 1000 / 15;
-					scFPSMode = 15;
-					return TRUE;
-				}
-
-				case ID_SYSTRAYMENU_FPS_SUBMENU + 3: { // 30
-					scMinFrameTime = 1000 / 30;
-					scFPSMode = 30;
-					return TRUE;
-				}
-
-				case ID_SYSTRAYMENU_FPS_SUBMENU + 4: { // 60
-					scMinFrameTime = 1000 / 60;
-					scFPSMode = 60;
-					return TRUE;
-				}
-
-				case ID_SYSTRAYMENU_FPS_SUBMENU + 5: { // 120
-					scMinFrameTime = 1000 / 120;
-					scFPSMode = 120;
-					return TRUE;
-				}
-
-				case ID_SYSTRAYMENU_FULLSCREEN: {
-					appLockRequested = TRUE;
-					renderMutex.lock();
-
-					if (scFullscreen) {
-
-						// Rescan displays because user may reconnect them
-						enumerateDisplays();
-
-						// Check if there is > 0 displays
-						if (displays.size() == 0) {
-
-							std::wcout << "Display not found: Can not display shader decause no displays found on the system" << std::endl;
-							MessageBoxA(
-								NULL,
-								"Can not display shader decause no displays found on the system",
-								"Display not found",
-								MB_ICONERROR | MB_OK
-							);
-
-							appLockRequested = FALSE;
-							renderMutex.unlock();
-
-							return TRUE;
-						}
-
-						// Ensure no out of bounds
-						if (scDisplayID >= displays.size())
-							scDisplayID = displays.size() - 1;
-
-						currentWindowDimensions = displays[scDisplayID];
-						
-						// Window size & location
-						MoveWindow(glWindow, currentWindowDimensions.left, currentWindowDimensions.top, currentWindowDimensions.right - currentWindowDimensions.left, currentWindowDimensions.bottom - currentWindowDimensions.top, TRUE);
-
-						// GL size
-						glWidth = currentWindowDimensions.right - currentWindowDimensions.left;
-						glHeight = currentWindowDimensions.bottom - currentWindowDimensions.top;
-
-						wglMakeCurrent(glDevice, glContext);
-						resizeSC();
-						wglMakeCurrent(NULL, NULL);
-						
-						// Update flag (obviously)
-						scFullscreen = FALSE;
-
-					} else {
-
-						// Rescan displays because user may reconnect them
-						enumerateDisplays();
-
-						// Check if there is > 0 displays
-						if (displays.size() == 0) {
-
-							std::wcout << "Display not found: Can not display shader decause no displays found on the system" << std::endl;
-							MessageBoxA(
-								NULL,
-								"Can not display shader decause no displays found on the system",
-								"Display not found",
-								MB_ICONERROR | MB_OK
-							);
-
-							appLockRequested = FALSE;
-							renderMutex.unlock();
-
-							return TRUE;
-						}
-
-						currentWindowDimensions = fullViewportSize;
-
-						// Window size & location
-						MoveWindow(glWindow, currentWindowDimensions.left, currentWindowDimensions.top, currentWindowDimensions.right - currentWindowDimensions.left, currentWindowDimensions.bottom - currentWindowDimensions.top, TRUE);
-
-						// GL size
-						glWidth = currentWindowDimensions.right - currentWindowDimensions.left;
-						glHeight = currentWindowDimensions.bottom - currentWindowDimensions.top;
-
-						wglMakeCurrent(glDevice, glContext);
-						resizeSC();
-						wglMakeCurrent(NULL, NULL);
-
-						// Update flag (obviously)
-						scFullscreen = TRUE;
-					}
-
-					appLockRequested = FALSE;
-					renderMutex.unlock();
-					return TRUE;
-				}
-
-				case ID_SYSTRAYMENU_MOVETONEXTDISPLAY: {
-					// Save me from a little duck constantly watching me
-					appLockRequested = TRUE;
-					renderMutex.lock();
-
-					if (scFullscreen) {
-
-						// Always return to the same display
-						// Rescan displays because user may reconnect them
-						enumerateDisplays();
-
-						// Check if there is > 0 displays
-						if (displays.size() == 0) {
-
-							std::wcout << "Display not found: Can not display shader decause no displays found on the system" << std::endl;
-							MessageBoxA(
-								NULL,
-								"Can not display shader decause no displays found on the system",
-								"Display not found",
-								MB_ICONERROR | MB_OK
-							);
-
-							appLockRequested = FALSE;
-							renderMutex.unlock();
-
-							return TRUE;
-						}
-
-						// Ensure no out of bounds
-						if (scDisplayID >= displays.size())
-							scDisplayID = displays.size() - 1;
-
-						currentWindowDimensions = displays[scDisplayID];
-
-						// Window size & location
-						MoveWindow(glWindow, currentWindowDimensions.left, currentWindowDimensions.top, currentWindowDimensions.right - currentWindowDimensions.left, currentWindowDimensions.bottom - currentWindowDimensions.top, TRUE);
-
-						// GL size
-						glWidth = currentWindowDimensions.right - currentWindowDimensions.left;
-						glHeight = currentWindowDimensions.bottom - currentWindowDimensions.top;
-
-						wglMakeCurrent(glDevice, glContext);
-						resizeSC();
-						wglMakeCurrent(NULL, NULL);
-
-						// Update flag (obviously)
-						scFullscreen = FALSE;
-
-					} else {
-
-						// Rescan displays because user may reconnect them
-						enumerateDisplays();
-
-						// Shift display
-						++scDisplayID;
-
-						// Check if there is > 0 displays
-						if (displays.size() == 0) {
-
-							std::wcout << "Display not found: Can not display shader decause no displays found on the system" << std::endl;
-							MessageBoxA(
-								NULL,
-								"Can not display shader decause no displays found on the system",
-								"Display not found",
-								MB_ICONERROR | MB_OK
-							);
-
-							appLockRequested = FALSE;
-							renderMutex.unlock();
-
-							return TRUE;
-						}
-
-						// Ensure no out of bounds, loop displays
-						if (scDisplayID >= displays.size())
-							scDisplayID = 0;
-
-						currentWindowDimensions = displays[scDisplayID];
-
-						// Window size & location
-						MoveWindow(glWindow, currentWindowDimensions.left, currentWindowDimensions.top, currentWindowDimensions.right - currentWindowDimensions.left, currentWindowDimensions.bottom - currentWindowDimensions.top, TRUE);
-
-						// GL size
-						glWidth = currentWindowDimensions.right - currentWindowDimensions.left;
-						glHeight = currentWindowDimensions.bottom - currentWindowDimensions.top;
-
-						wglMakeCurrent(glDevice, glContext);
-						resizeSC();
-						wglMakeCurrent(NULL, NULL);
-
-						// Update flag (obviously)
-						scFullscreen = FALSE;
-					}
-
-					appLockRequested = FALSE;
-					renderMutex.unlock();
-					return TRUE;
-				}
-
-				case ID_SYSTRAYMENU_MOVETOPREVDISPLAY: {
-					// Save me from a little duck constantly watching me
-					appLockRequested = TRUE;
-					renderMutex.lock();
-
-					if (scFullscreen) {
-
-						// Always return to the same display
-						// Rescan displays because user may reconnect them
-						enumerateDisplays();
-
-						// Check if there is > 0 displays
-						if (displays.size() == 0) {
-
-							std::wcout << "Display not found: Can not display shader decause no displays found on the system" << std::endl;
-							MessageBoxA(
-								NULL,
-								"Can not display shader decause no displays found on the system",
-								"Display not found",
-								MB_ICONERROR | MB_OK
-							);
-
-							appLockRequested = FALSE;
-							renderMutex.unlock();
-
-							return TRUE;
-						}
-
-						// Ensure no out of bounds
-						if (scDisplayID >= displays.size())
-							scDisplayID = displays.size() - 1;
-
-						currentWindowDimensions = displays[scDisplayID];
-
-						// Window size & location
-						MoveWindow(glWindow, currentWindowDimensions.left, currentWindowDimensions.top, currentWindowDimensions.right - currentWindowDimensions.left, currentWindowDimensions.bottom - currentWindowDimensions.top, TRUE);
-
-						// GL size
-						glWidth = currentWindowDimensions.right - currentWindowDimensions.left;
-						glHeight = currentWindowDimensions.bottom - currentWindowDimensions.top;
-
-						wglMakeCurrent(glDevice, glContext);
-						resizeSC();
-						wglMakeCurrent(NULL, NULL);
-
-						// Update flag (obviously)
-						scFullscreen = FALSE;
-
-					} else {
-
-						// Rescan displays because user may reconnect them
-						enumerateDisplays();
-
-						// Shift display
-						--scDisplayID;
-
-						// Check if there is > 0 displays
-						if (displays.size() == 0) {
-							MessageBoxA(
-								NULL,
-								"Can not display shader decause no displays found on the system",
-								"Display not found",
-								MB_ICONERROR | MB_OK
-							);
-
-							appLockRequested = FALSE;
-							renderMutex.unlock();
-
-							return TRUE;
-						}
-
-						// Ensure no out of bounds, loop displays
-						if (scDisplayID < 0)
-							scDisplayID = displays.size() - 1;
-						
-						if (scDisplayID >= displays.size())
-							scDisplayID = displays.size() - 1;
-
-						currentWindowDimensions = displays[scDisplayID];
-
-						// Window size & location
-						MoveWindow(glWindow, currentWindowDimensions.left, currentWindowDimensions.top, currentWindowDimensions.right - currentWindowDimensions.left, currentWindowDimensions.bottom - currentWindowDimensions.top, TRUE);
-
-						// GL size
-						glWidth = currentWindowDimensions.right - currentWindowDimensions.left;
-						glHeight = currentWindowDimensions.bottom - currentWindowDimensions.top;
-
-						wglMakeCurrent(glDevice, glContext);
-						resizeSC();
-						wglMakeCurrent(NULL, NULL);
-
-						// Update flag (obviously)
-						scFullscreen = FALSE;
-					}
-
-					appLockRequested = FALSE;
-					renderMutex.unlock();
-					return TRUE;
-				}
-
-				case ID_SYSTRAYMENU_RESCAN_DISPLAYS: {
-					appLockRequested = TRUE;
-					renderMutex.lock();
-
-					// Rescan displays because user may reconnect them
-					enumerateDisplays();
-
-					// Check if there is > 0 displays
-					if (displays.size() == 0) {
-
-						std::wcout << "Display not found: Can not display shader decause no displays found on the system" << std::endl;
-						MessageBoxA(
-							NULL,
-							"Can not display shader decause no displays found on the system",
-							"Display not found",
-							MB_ICONERROR | MB_OK
-						);
-
-						appLockRequested = FALSE;
-						renderMutex.unlock();
-
-						return TRUE;
-					}
-
-					if (scFullscreen) {
-
-						currentWindowDimensions = fullViewportSize;
-
-						// Window size & location
-						MoveWindow(glWindow, currentWindowDimensions.left, currentWindowDimensions.top, currentWindowDimensions.right - currentWindowDimensions.left, currentWindowDimensions.bottom - currentWindowDimensions.top, TRUE);
-
-						// GL size
-						int nglWidth = currentWindowDimensions.right - currentWindowDimensions.left;
-						int nglHeight = currentWindowDimensions.bottom - currentWindowDimensions.top;
-
-						// Resize context and textures only if there is a size mismatch
-						if (nglWidth != glWidth || nglHeight != glHeight) {
-							glWidth = nglWidth;
-							glHeight = nglHeight;
-
-							wglMakeCurrent(glDevice, glContext);
-							resizeSC();
-							wglMakeCurrent(NULL, NULL);
-						}
-
-					} else {
-
-						// Ensure no out of bounds, loop displays
-						if (scDisplayID >= displays.size())
-							scDisplayID = 0;
-
-						currentWindowDimensions = displays[scDisplayID];
-
-						// Window size & location
-						MoveWindow(glWindow, currentWindowDimensions.left, currentWindowDimensions.top, currentWindowDimensions.right - currentWindowDimensions.left, currentWindowDimensions.bottom - currentWindowDimensions.top, TRUE);
-
-						// GL size
-						int nglWidth = currentWindowDimensions.right - currentWindowDimensions.left;
-						int nglHeight = currentWindowDimensions.bottom - currentWindowDimensions.top;
-
-						// Resize context and textures only if there is a size mismatch
-						if (nglWidth != glWidth || nglHeight != glHeight) {
-							glWidth = nglWidth;
-							glHeight = nglHeight;
-
-							wglMakeCurrent(glDevice, glContext);
-							resizeSC();
-							wglMakeCurrent(NULL, NULL);
-						}
-					}
-
-					appLockRequested = FALSE;
-					renderMutex.unlock();
-					return TRUE;
-				}
-				
-				case ID_SYSTRAYMENU_RELOAD_INPUTS: {
-					appLockRequested = TRUE;
-					renderMutex.lock();
-					wglMakeCurrent(glDevice, glContext);
-					
-					reloadResources();
-					
-					wglMakeCurrent(NULL, NULL);
-					appLockRequested = FALSE;
-					renderMutex.unlock();
-				}
-
-				default:
-					return DefWindowProc(hWnd, wmId, wParam, lParam);
 			}
+
+			return DefWindowProc(hWnd, wmId, wParam, lParam);
 		}
 		
 		case WM_DESTROY: {
