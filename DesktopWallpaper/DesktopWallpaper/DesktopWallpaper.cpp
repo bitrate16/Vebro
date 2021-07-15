@@ -115,10 +115,10 @@ int scBufferShaderInputs[4][4] = { { -1, -1, -1, -1 }, { -1, -1, -1, -1 }, { -1,
 
 
 // >> Threading related
-std::thread*                          renderThread = nullptr;   // Thread for rendering the wallpaper
-std::mutex                            renderMutex;              // Captured on each draw frame
-BOOL                                  appExiting = FALSE;       // Indicates if application exits
-BOOL                                  appLockRequested = FALSE; // indicates if main thread wants to acquire lock
+std::thread* renderThread = nullptr;   // Thread for rendering the wallpaper
+std::mutex   renderMutex;              // Captured on each draw frame
+BOOL         appExiting = FALSE;       // Indicates if application exits
+BOOL         appLockRequested = FALSE; // indicates if main thread wants to acquire lock
 
 
 // >> Resources related
@@ -888,7 +888,7 @@ BOOL loadBufferShaderFromFile(const std::wstring& path, int buffer_id) {
 
 // Loads Buffer i shader from saved path
 // Returns 0 on success, 1 else
-BOOL reloadBufferShaderFromFile(int buffer_id) {
+BOOL reloadBufferShader(int buffer_id) {
 
 	if (buffer_id < 0 || buffer_id > 3) {
 		std::wcout << "Can not reload Shader for Buffer " << buffer_id << ", Buffer does not exist, buffer_id corrupt" << std::endl;
@@ -2062,6 +2062,30 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 						renderMutex.unlock();
 					});
 
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Reset buffers"));
+					trayMenuHandlers.push_back([]() {
+						// TODO: Reset buffers by filling them with solid black when opening other pack or by this button click
+						std::wcout << "Incomplete :: Reset buffers" << std::endl;
+					});
+
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Reload shaders"));
+					trayMenuHandlers.push_back([]() {
+
+						appLockRequested = TRUE;
+						renderMutex.lock();
+						wglMakeCurrent(glDevice, glContext);
+
+						reloadMainShader();
+						reloadBufferShader(0);
+						reloadBufferShader(1);
+						reloadBufferShader(2);
+						reloadBufferShader(3);
+
+						wglMakeCurrent(NULL, NULL);
+						appLockRequested = FALSE;
+						renderMutex.unlock();
+					});
+
 					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Reload pack"));
 					trayMenuHandlers.push_back([]() {
 						std::wcout << "Incomplete :: Reload pack" << std::endl;
@@ -2422,7 +2446,7 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 								renderMutex.lock();
 								wglMakeCurrent(glDevice, glContext);
 
-								reloadBufferShaderFromFile(bufferId);
+								reloadBufferShader(bufferId);
 
 								wglMakeCurrent(NULL, NULL);
 								appLockRequested = FALSE;
