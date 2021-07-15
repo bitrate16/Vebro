@@ -12,6 +12,7 @@
 #include <windows.h>
 #include <shellapi.h>
 #include <WinUser.h>
+#include <Shobjidl.h>
 #include <tchar.h>
 #include <cmath>
 #include <ctime>
@@ -37,6 +38,7 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <codecvt>
 #include <functional>
 
 #include <GL/glew.h>
