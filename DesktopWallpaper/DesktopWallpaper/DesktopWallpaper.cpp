@@ -1915,6 +1915,35 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 						renderMutex.unlock();
 					});
 
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Reset buffers"));
+					trayMenuHandlers.push_back([]() {
+
+						appLockRequested = TRUE;
+						renderMutex.lock();
+						wglMakeCurrent(glDevice, glContext);
+
+						// Bind each buffer and do glClearColor
+						for (int i = 0; i < 4; ++i) {
+							glBindFramebuffer(GL_FRAMEBUFFER, glBufferShaderFramebuffers[0][i]);
+							glViewport(0, 0, glWidth, glHeight);
+							glClearColor(0, 0, 0, 0);
+							glClear(GL_COLOR_BUFFER_BIT);
+
+							glBindFramebuffer(GL_FRAMEBUFFER, glBufferShaderFramebuffers[1][i]);
+							glViewport(0, 0, glWidth, glHeight);
+							glClearColor(0, 0, 0, 0);
+							glClear(GL_COLOR_BUFFER_BIT);
+
+							glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+							scBufferFrames[i] = 0;
+						}
+
+						wglMakeCurrent(NULL, NULL);
+						appLockRequested = FALSE;
+						renderMutex.unlock();
+					});
+
 					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Reload inputs"));
 					trayMenuHandlers.push_back([]() {
 						appLockRequested = TRUE;
@@ -1926,12 +1955,6 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 						wglMakeCurrent(NULL, NULL);
 						appLockRequested = FALSE;
 						renderMutex.unlock();
-					});
-
-					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Reset buffers"));
-					trayMenuHandlers.push_back([]() {
-						// TODO: Reset buffers by filling them with solid black when opening other pack or by this button click
-						std::wcout << "Incomplete :: Reset buffers" << std::endl;
 					});
 
 					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Reload shaders"));
@@ -2969,30 +2992,38 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 
 
 	// Resources & shaders
-	SCResource input0;
-	input0.type = IMAGE_TEXTURE;
-	input0.path = std::filesystem::absolute("Data/shrek.png").wstring();
+	//SCResource input_main_0;
+	//input0.type = IMAGE_TEXTURE;
+	//input0.path = std::filesystem::absolute("Data/shrek.png").wstring();
 
-	SCResource input1;
-	input1.type = FRAME_BUFFER;
-	input1.buffer_id = 0;
+	SCResource input_main_0;
+	input_main_0.type = FRAME_BUFFER;
+	input_main_0.buffer_id = 1;
 
-	SCResource input2;
-	input2.type = FRAME_BUFFER;
-	input2.buffer_id = 1;
+	//SCResource input2;
+	//input2.type = FRAME_BUFFER;
+	//input2.buffer_id = 1;
 
 	loadMainShaderFromFile(L"Data/sandbox0.glsl");
-	loadMainShaderResource(input0, 0); // shrek.png
-	loadMainShaderResource(input1, 1); // Buffer A
+	// loadMainShaderResource(input_main_0, 0); // Buffer B
+	// loadMainShaderResource(input0, 0); // shrek.png
+	// loadMainShaderResource(input1, 1); // Buffer A
 
 
-	loadBufferShaderFromFile(L"Data/sandbox1.glsl", 0);
-	loadBufferShaderResource(input1, 0, 0); // Buffer A
+	//loadBufferShaderFromFile(L"Data/sandbox1.glsl", 0);
+	//loadBufferShaderResource(input1, 0, 0); // Buffer A
 
+	SCResource input_B_0;
+	input_B_0.type = FRAME_BUFFER;
+	input_B_0.buffer_id = 1;
+
+	SCResource input_B_1;
+	input_B_1.type = IMAGE_TEXTURE;
+	input_B_1.path = std::filesystem::absolute("Data/shrek2.png").wstring();
 
 	loadBufferShaderFromFile(L"Data/sandbox2.glsl", 1);
-	loadBufferShaderResource(input2, 1, 0); // Buffer B
-	loadBufferShaderResource(input0, 1, 1); // shrek.png
+	loadBufferShaderResource(input_B_0, 1, 0); // Buffer B
+	loadBufferShaderResource(input_B_1, 1, 1); // shrek2.png
 
 
 	// Move to second display
