@@ -353,6 +353,7 @@ int loadResource(SCResource res) {
 		case FRAME_BUFFER: {
 			res.refs = 1;
 
+			// TODO: Check if chader is in main rendering chain
 			glBufferShaderShouldBeRendered[res.buffer_id] = TRUE;
 
 			std::wcout << "Inserting resource for Buffer " << res.buffer_id << std::endl;
@@ -583,7 +584,7 @@ BOOL loadMainShaderResource(SCResource res, int inputID) {
 	if (scMainShaderInputs[inputID] != -1) {
 
 		int resID = findResource(res);
-		
+
 		// Do not relod the resource
 		if (resID == scMainShaderInputs[inputID])
 			return 0;
@@ -595,6 +596,15 @@ BOOL loadMainShaderResource(SCResource res, int inputID) {
 
 	scMainShaderInputs[inputID] = loadResource(res);
 	return scMainShaderInputs[inputID] == -1;
+}
+
+// Performs unloading of main shader resource
+void unloadMainShaderResource(int inputID) {
+
+	if (scMainShaderInputs[inputID] != -1) {
+		unloadResource(scMainShaderInputs[inputID]);
+		scMainShaderInputs[inputID] = -1;
+	}
 }
 
 // Performs load of main shader resource
@@ -626,8 +636,22 @@ BOOL loadBufferShaderResource(SCResource res, int bufferID, int inputID) {
 	return scBufferShaderInputs[bufferID][inputID] == -1;
 }
 
+// Performs unloading of main shader resource
+BOOL unloadBufferShaderResource(int bufferID, int inputID) {
 
-// Performs simple operation of opening file picker with specified extensions allowed
+	if (bufferID < 0 || bufferID > 3) {
+		std::wcout << "Can not load resource for Buffer " << bufferID << ", Buffer does not exist, bufferID corrupt" << std::endl;
+		return 1;
+	}
+
+	if (scBufferShaderInputs[bufferID][inputID] != -1) {
+		unloadResource(scBufferShaderInputs[bufferID][inputID]);
+		scBufferShaderInputs[bufferID][inputID] = -1;
+	}
+}
+
+
+// Performs simple operation of opening file picker with specified extensions allowed for file open
 std::wstring openFile(int fileTypesSize, const COMDLG_FILTERSPEC* fileTypes) {
 
 	std::wstring result;
@@ -640,10 +664,10 @@ std::wstring openFile(int fileTypesSize, const COMDLG_FILTERSPEC* fileTypes) {
 		// Create the FileOpenDialog object.
 		hr = CoCreateInstance(CLSID_FileOpenDialog, NULL, CLSCTX_ALL, IID_IFileOpenDialog, reinterpret_cast<void**>(&pFileOpen));
 
-		// Set extension filter
-		pFileOpen->SetFileTypes(fileTypesSize, fileTypes);
-
 		if (SUCCEEDED(hr)) {
+
+			// Set extension filter
+			pFileOpen->SetFileTypes(fileTypesSize, fileTypes);
 
 			// Show the Open dialog box.
 			hr = pFileOpen->Show(NULL);
@@ -670,6 +694,56 @@ std::wstring openFile(int fileTypesSize, const COMDLG_FILTERSPEC* fileTypes) {
 				}
 			}
 			pFileOpen->Release();
+		}
+		CoUninitialize();
+	}
+
+	return result;
+}
+
+// Performs simple operation of opening file picker with specified extensions allowed for file save
+std::wstring saveFile(int fileTypesSize, const COMDLG_FILTERSPEC* fileTypes) {
+
+	std::wstring result;
+	HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+
+	if (SUCCEEDED(hr)) {
+
+		IFileOpenDialog* pFileSave;
+
+		// Create the FileOpenDialog object.
+		hr = CoCreateInstance(CLSID_FileSaveDialog, NULL, CLSCTX_ALL, IID_IFileSaveDialog, reinterpret_cast<void**>(&pFileSave));
+
+		if (SUCCEEDED(hr)) {
+
+			// Set extension filter
+			pFileSave->SetFileTypes(fileTypesSize, fileTypes);
+
+			// Show the Open dialog box.
+			hr = pFileSave->Show(NULL);
+
+			// Get the file name from the dialog box.
+			if (SUCCEEDED(hr)) {
+
+				IShellItem* pItem;
+				hr = pFileSave->GetResult(&pItem);
+
+				if (SUCCEEDED(hr)) {
+
+					PWSTR pszFilePath;
+					hr = pItem->GetDisplayName(SIGDN_FILESYSPATH, &pszFilePath);
+
+					// Display the file name to the user.
+					if (SUCCEEDED(hr)) {
+						result = pszFilePath;
+						std::wcout << "File Save result :: " << result << std::endl;
+
+						CoTaskMemFree(pszFilePath);
+					}
+					pItem->Release();
+				}
+			}
+			pFileSave->Release();
 		}
 		CoUninitialize();
 	}
@@ -1211,9 +1285,9 @@ void renderSC() {
 								// Bind texture
 								// TODO: In parallel rendering use different CL_TEXTURE* to avoid data intersection
 								// TODO: Support for Sampler3D, e.t.c.
-								glActiveTexture(GL_TEXTURE0 + k);
+								glActiveTexture(GL_TEXTURE4 + i * 4 + k);
 								glBindTexture(GL_TEXTURE_2D, scResources[scBufferShaderInputs[i][k]].resource.bind);
-								glUniform1i(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelUniforms[k]), k);
+								glUniform1i(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelUniforms[k]), 4 + i * 4 + k);
 
 								// Width & Height 
 								glUniform3f(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelResolutionUniforms[k]), (GLfloat) scResources[scBufferShaderInputs[i][k]].resource.width, (GLfloat) scResources[scBufferShaderInputs[i][k]].resource.height, (GLfloat) 0);
@@ -1253,15 +1327,16 @@ void renderSC() {
 								// Bind texture
 								// TODO: In parallel rendering use different CL_TEXTURE* to avoid data intersection
 								// TODO: Support for Sampler3D, e.t.c.
-								glActiveTexture(GL_TEXTURE0 + k);
+								glActiveTexture(GL_TEXTURE4 + i * 4 + k);
 								glBindTexture(GL_TEXTURE_2D, glBufferShaderFramebufferTextures[scBufferFrames[scResources[scBufferShaderInputs[i][k]].resource.buffer_id] % 2][scResources[scBufferShaderInputs[i][k]].resource.buffer_id]);
-								glUniform1i(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelUniforms[k]), k);
+								glUniform1i(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelUniforms[k]), 4 + i * 4 + k);
 
 								// Width & Height 
 								glUniform3f(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelResolutionUniforms[k]), (GLfloat) glWidth, (GLfloat) glHeight, (GLfloat) 0);
 								
 								// Timestamp of previous buffer frame
 								glUniform1f(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelTimeUniforms[k]), (GLfloat) scTimestamp);
+
 								continue;
 							}
 						}
@@ -1376,6 +1451,7 @@ void renderSC() {
 
 						// Timestamp of previous buffer frame
 						glUniform1f(glGetUniformLocation(glMainShaderProgramID, iChannelTimeUniforms[k]), (GLfloat) scTimestamp);
+
 						continue;
 					}
 				}
@@ -1387,7 +1463,6 @@ void renderSC() {
 			glBindVertexArray(0);
 
 			glFlush();
-
 			SwapBuffers(glDevice);
 
 			// Update required values
@@ -2132,16 +2207,16 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 					InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Open"));
 					trayMenuHandlers.push_back([]() {
 
-						appLockRequested = TRUE;
-						renderMutex.lock();
-						wglMakeCurrent(glDevice, glContext);
-
 						COMDLG_FILTERSPEC fileTypes[] = {
 							{ L"GLSL files", L"*.glsl" },
 							{ L"Any file", L"*" }
 						};
 
 						std::wstring shaderPath = openFile(ARRAYSIZE(fileTypes), fileTypes);
+
+						appLockRequested = TRUE;
+						renderMutex.lock();
+						wglMakeCurrent(glDevice, glContext);
 
 						if (shaderPath.size() != 0) 
 							loadMainShaderFromFile(shaderPath);
@@ -2167,14 +2242,53 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 						});
 					}
 
-					InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("New")); // TODO: Do we need it?
+					InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("New"));
 					trayMenuHandlers.push_back([]() {
-						std::wcout << "Incomplete :: New Main Shader" << std::endl;
+
+						COMDLG_FILTERSPEC fileTypes[] = {
+							{ L"GLSL files", L"*.glsl" },
+							{ L"Any file", L"*" }
+						};
+
+						std::wstring shaderPath = saveFile(ARRAYSIZE(fileTypes), fileTypes);
+
+						appLockRequested = TRUE;
+						renderMutex.lock();
+						wglMakeCurrent(glDevice, glContext);
+
+						if (shaderPath.size() != 0) {
+
+							// Default Main shader
+							std::ofstream out(shaderPath.c_str());
+							out << defaultMainShader;
+							out.close();
+
+							// Obviously, open this shader
+							loadMainShaderFromFile(shaderPath);
+						}
+
+						wglMakeCurrent(NULL, NULL);
+						appLockRequested = FALSE;
+						renderMutex.unlock();
 					});
 					
 					for (int inputId = 0; inputId < 4; ++inputId) {
 
 						HMENU trayMainInputTypeMenu = CreatePopupMenu();
+
+						InsertMenu(trayMainInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("None"));
+						trayMenuHandlers.push_back([inputId]() {
+
+							appLockRequested = TRUE;
+							renderMutex.lock();
+							wglMakeCurrent(glDevice, glContext);
+
+							unloadMainShaderResource(inputId);
+
+							wglMakeCurrent(NULL, NULL);
+							appLockRequested = FALSE;
+							renderMutex.unlock();
+						});
 
 						InsertMenu(trayMainInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Buffer A"));
 						trayMenuHandlers.push_back([inputId]() {
@@ -2251,15 +2365,15 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 						InsertMenu(trayMainInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Image"));
 						trayMenuHandlers.push_back([inputId]() {
 
-							appLockRequested = TRUE;
-							renderMutex.lock();
-							wglMakeCurrent(glDevice, glContext);
-
 							COMDLG_FILTERSPEC fileTypes[] = {
 								{ L"PNG images", L"*.png" }
 							};
 
 							std::wstring imagePath = openFile(ARRAYSIZE(fileTypes), fileTypes);
+
+							appLockRequested = TRUE;
+							renderMutex.lock();
+							wglMakeCurrent(glDevice, glContext);
 
 							if (imagePath.size() != 0) {
 
@@ -2317,16 +2431,16 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 						InsertMenu(trayBufferShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Open"));
 						trayMenuHandlers.push_back([bufferId]() {
 
-							appLockRequested = TRUE;
-							renderMutex.lock();
-							wglMakeCurrent(glDevice, glContext);
-
 							COMDLG_FILTERSPEC fileTypes[] = {
 								{ L"GLSL files", L"*.glsl" },
 								{ L"Any file", L"*" }
 							};
 
 							std::wstring shaderPath = openFile(ARRAYSIZE(fileTypes), fileTypes);
+
+							appLockRequested = TRUE;
+							renderMutex.lock();
+							wglMakeCurrent(glDevice, glContext);
 
 							if (shaderPath.size() != 0)
 								loadBufferShaderFromFile(shaderPath, bufferId);
@@ -2352,9 +2466,34 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 							});
 						}
 
-						InsertMenu(trayBufferShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("New")); // TODO: Do we need it?
+						InsertMenu(trayBufferShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("New"));
 						trayMenuHandlers.push_back([bufferId]() {
-							std::wcout << "Incomplete :: New Buffer " << bufferId << " Shader" << std::endl;
+
+							COMDLG_FILTERSPEC fileTypes[] = {
+								{ L"GLSL files", L"*.glsl" },
+								{ L"Any file", L"*" }
+							};
+
+							std::wstring shaderPath = saveFile(ARRAYSIZE(fileTypes), fileTypes);
+
+							appLockRequested = TRUE;
+							renderMutex.lock();
+							wglMakeCurrent(glDevice, glContext);
+
+							if (shaderPath.size() != 0) {
+
+								// Default Main shader
+								std::ofstream out(shaderPath.c_str());
+								out << defaultBufferShader;
+								out.close();
+
+								// Obviously, open this shader
+								loadBufferShaderFromFile(shaderPath, bufferId);
+							}
+
+							wglMakeCurrent(NULL, NULL);
+							appLockRequested = FALSE;
+							renderMutex.unlock();
 						});
 						
 						if (glBufferShaderPath[bufferId] != L"") {
@@ -2376,6 +2515,20 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 						for (int inputId = 0; inputId < 4; ++inputId) {
 
 							HMENU trayBufferInputTypeMenu = CreatePopupMenu();
+
+							InsertMenu(trayBufferInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("None"));
+							trayMenuHandlers.push_back([bufferId, inputId]() {
+
+								appLockRequested = TRUE;
+								renderMutex.lock();
+								wglMakeCurrent(glDevice, glContext);
+
+								unloadBufferShaderResource(bufferId, inputId);
+
+								wglMakeCurrent(NULL, NULL);
+								appLockRequested = FALSE;
+								renderMutex.unlock();
+							});
 
 							InsertMenu(trayBufferInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Buffer A"));
 							trayMenuHandlers.push_back([bufferId, inputId]() {
@@ -2452,15 +2605,15 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 							InsertMenu(trayBufferInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Image"));
 							trayMenuHandlers.push_back([bufferId, inputId]() {
 
-								appLockRequested = TRUE;
-								renderMutex.lock();
-								wglMakeCurrent(glDevice, glContext);
-
 								COMDLG_FILTERSPEC fileTypes[] = {
 									{ L"PNG images", L"*.png" }
 								};
 
 								std::wstring imagePath = openFile(ARRAYSIZE(fileTypes), fileTypes);
+
+								appLockRequested = TRUE;
+								renderMutex.lock();
+								wglMakeCurrent(glDevice, glContext);
 
 								if (imagePath.size() != 0) {
 
@@ -2729,9 +2882,10 @@ int createDesktopWindow(_In_ HINSTANCE hInstance) {
 	memset(&pfd, 0, sizeof(pfd));
 	pfd.nSize = sizeof(pfd);
 	pfd.nVersion = 1;
-	pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL;
+	pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER; // PFD_SUPPORT_COMPOSITION | 
 	pfd.iPixelType = PFD_TYPE_RGBA;
 	pfd.cColorBits = 32;
+	//pfd.iLayerType = PFD_MAIN_PLANE;
 
 	int pf = ChoosePixelFormat(glDevice, &pfd);
 	if (pf == 0) {
@@ -2948,13 +3102,14 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 #endif
 	
 	// COMDLG_FILTERSPEC fileTypes[] = {
-	// 	{ L"PNG images", L"*.png" }
+	// 	{ L"GLSL files", L"*.glsl" },
+	// 	{ L"Any file", L"*" }
 	// };
-	// 
-	// std::wcout << openFile(ARRAYSIZE(fileTypes), fileTypes);
-	// 
+	// // 
+	// std::wcout << saveFile(ARRAYSIZE(fileTypes), fileTypes);
+	// // 
 	// system("PAUSE");
-	// 
+	// // 
 	// return 0;
 
 	// Change output mode to Unicode text
@@ -2992,38 +3147,25 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 
 
 	// Resources & shaders
-	//SCResource input_main_0;
-	//input0.type = IMAGE_TEXTURE;
-	//input0.path = std::filesystem::absolute("Data/shrek.png").wstring();
 
 	SCResource input_main_0;
 	input_main_0.type = FRAME_BUFFER;
-	input_main_0.buffer_id = 1;
-
-	//SCResource input2;
-	//input2.type = FRAME_BUFFER;
-	//input2.buffer_id = 1;
+	input_main_0.buffer_id = 0;
 
 	loadMainShaderFromFile(L"Data/sandbox0.glsl");
-	// loadMainShaderResource(input_main_0, 0); // Buffer B
-	// loadMainShaderResource(input0, 0); // shrek.png
-	// loadMainShaderResource(input1, 1); // Buffer A
-
-
-	//loadBufferShaderFromFile(L"Data/sandbox1.glsl", 0);
-	//loadBufferShaderResource(input1, 0, 0); // Buffer A
+	loadMainShaderResource(input_main_0, 0); // Buffer A
 
 	SCResource input_B_0;
 	input_B_0.type = FRAME_BUFFER;
-	input_B_0.buffer_id = 1;
+	input_B_0.buffer_id = 0;
 
 	SCResource input_B_1;
 	input_B_1.type = IMAGE_TEXTURE;
 	input_B_1.path = std::filesystem::absolute("Data/shrek2.png").wstring();
 
-	loadBufferShaderFromFile(L"Data/sandbox2.glsl", 1);
-	loadBufferShaderResource(input_B_0, 1, 0); // Buffer B
-	loadBufferShaderResource(input_B_1, 1, 1); // shrek2.png
+	loadBufferShaderFromFile(L"Data/sandbox2.glsl", 0);
+	loadBufferShaderResource(input_B_0, 0, 0); // Buffer A
+	loadBufferShaderResource(input_B_1, 0, 1); // shrek2.png
 
 
 	// Move to second display
