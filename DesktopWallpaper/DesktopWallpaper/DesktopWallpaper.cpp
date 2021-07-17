@@ -1992,21 +1992,30 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 						scFPSMode = 120;
 					});
 
+					InsertMenu(trayFPSSelectMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("240 FPS"));
+					trayMenuHandlers.push_back([]() {
+						scMinFrameTime = 1000 / 240;
+						scFPSMode = 240;
+					});
+
 					// IDK how to concat and use this LPWSTRPTR shit
 					if (scFPSMode == 1) {
 						InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayFPSSelectMenu, _T("FPS (1)"));
-						CheckMenuItem(trayFPSSelectMenu, menuId - 5, MF_CHECKED);
+						CheckMenuItem(trayFPSSelectMenu, menuId - 6, MF_CHECKED);
 					} else if (scFPSMode == 15) {
 						InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayFPSSelectMenu, _T("FPS (15)"));
-						CheckMenuItem(trayFPSSelectMenu, menuId - 4, MF_CHECKED);
+						CheckMenuItem(trayFPSSelectMenu, menuId - 5, MF_CHECKED);
 					} else if (scFPSMode == 30) {
 						InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayFPSSelectMenu, _T("FPS (30)"));
-						CheckMenuItem(trayFPSSelectMenu, menuId - 3, MF_CHECKED);
+						CheckMenuItem(trayFPSSelectMenu, menuId - 4, MF_CHECKED);
 					} else if (scFPSMode == 60) {
 						InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayFPSSelectMenu, _T("FPS (60)"));
-						CheckMenuItem(trayFPSSelectMenu, menuId - 2, MF_CHECKED);
-					} else{ // scFPSMode == 120
+						CheckMenuItem(trayFPSSelectMenu, menuId - 3, MF_CHECKED);
+					} else if (scFPSMode == 120) {
 						InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayFPSSelectMenu, _T("FPS (120)"));
+						CheckMenuItem(trayFPSSelectMenu, menuId - 2, MF_CHECKED);
+					} else { // scFPSMode == 240
+						InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayFPSSelectMenu, _T("FPS (240)"));
 						CheckMenuItem(trayFPSSelectMenu, menuId - 1, MF_CHECKED);
 					}
 
