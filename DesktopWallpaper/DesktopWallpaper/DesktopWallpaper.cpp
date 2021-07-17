@@ -1618,67 +1618,28 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 					int menuId = TRAY_MENU_BASE_ID;
 					trayMainMenu = CreatePopupMenu();
 
-					// Obviously, build menu
-					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Move to next display"));
-					trayMenuHandlers.push_back([]() {
-						// Save me from a little duck constantly watching me
-						appLockRequested = TRUE;
-						renderMutex.lock();
+					HMENU displaySelectionMenu = CreatePopupMenu();
+					for (int displayId = 0; displayId < displays.size(); ++displayId) {
 
-						if (scFullscreen) {
+						std::wstring displayDesc = std::wstring(L"Display ") + std::to_wstring(displayId) + L" (" + std::to_wstring(displays[displayId].right - displays[displayId].left) + L"x" + std::to_wstring(displays[displayId].bottom - displays[displayId].top) + L")";
+						
+						InsertMenu(displaySelectionMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, displayDesc.c_str());
+						trayMenuHandlers.push_back([displayId]() {
 
-							// Always return to the same display
-							// Rescan displays because user may reconnect them
-							enumerateDisplays();
-
-							// Check if there is > 0 displays
-							if (displays.size() == 0) {
-
-								std::wcout << "Display not found: Can not display shader decause no displays found on the system" << std::endl;
-								MessageBoxA(
-									NULL,
-									"Can not display shader decause no displays found on the system",
-									"Display not found",
-									MB_ICONERROR | MB_OK
-								);
-
-								appLockRequested = FALSE;
-								renderMutex.unlock();
-
-								return TRUE;
-							}
-
-							// Ensure no out of bounds
-							if (scDisplayID >= displays.size())
-								scDisplayID = displays.size() - 1;
-
-							currentWindowDimensions = displays[scDisplayID];
-
-							// Window size & location
-							MoveWindow(glWindow, currentWindowDimensions.left, currentWindowDimensions.top, currentWindowDimensions.right - currentWindowDimensions.left, currentWindowDimensions.bottom - currentWindowDimensions.top, TRUE);
-
-							// GL size
-							glWidth = currentWindowDimensions.right - currentWindowDimensions.left;
-							glHeight = currentWindowDimensions.bottom - currentWindowDimensions.top;
-
-							wglMakeCurrent(glDevice, glContext);
-							resizeSC();
-							wglMakeCurrent(NULL, NULL);
-
-							// Update flag (obviously)
-							scFullscreen = FALSE;
-						} else {
+							// Save me from a little duck constantly watching me
+							appLockRequested = TRUE;
+							renderMutex.lock();
 
 							// Rescan displays because user may reconnect them
 							enumerateDisplays();
 
 							// Shift display
-							++scDisplayID;
+							scDisplayID = displayId;
 
 							// Check if there is > 0 displays
 							if (displays.size() == 0) {
 
-								std::wcout << "Display not found: Can not display shader decause no displays found on the system" << std::endl;
+								std::wcout << "Display not found: Can not display shader decause no displays were found on the system" << std::endl;
 								MessageBoxA(
 									NULL,
 									"Can not display shader decause no displays found on the system",
@@ -1711,111 +1672,16 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 
 							// Update flag (obviously)
 							scFullscreen = FALSE;
-						}
 
-						appLockRequested = FALSE;
-						renderMutex.unlock();
-					});
-					
-					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Move to prev display"));
-					trayMenuHandlers.push_back([]() {
-						// Save me from a little duck constantly watching me
-						appLockRequested = TRUE;
-						renderMutex.lock();
+							appLockRequested = FALSE;
+							renderMutex.unlock();
+						});
+						if (scDisplayID == displayId)
+							CheckMenuItem(displaySelectionMenu, menuId - 1, MF_CHECKED);
+					}
 
-						if (scFullscreen) {
-
-							// Always return to the same display
-							// Rescan displays because user may reconnect them
-							enumerateDisplays();
-
-							// Check if there is > 0 displays
-							if (displays.size() == 0) {
-
-								std::wcout << "Display not found: Can not display shader decause no displays found on the system" << std::endl;
-								MessageBoxA(
-									NULL,
-									"Can not display shader decause no displays found on the system",
-									"Display not found",
-									MB_ICONERROR | MB_OK
-								);
-
-								appLockRequested = FALSE;
-								renderMutex.unlock();
-
-								return TRUE;
-							}
-
-							// Ensure no out of bounds
-							if (scDisplayID >= displays.size())
-								scDisplayID = displays.size() - 1;
-
-							currentWindowDimensions = displays[scDisplayID];
-
-							// Window size & location
-							MoveWindow(glWindow, currentWindowDimensions.left, currentWindowDimensions.top, currentWindowDimensions.right - currentWindowDimensions.left, currentWindowDimensions.bottom - currentWindowDimensions.top, TRUE);
-
-							// GL size
-							glWidth = currentWindowDimensions.right - currentWindowDimensions.left;
-							glHeight = currentWindowDimensions.bottom - currentWindowDimensions.top;
-
-							wglMakeCurrent(glDevice, glContext);
-							resizeSC();
-							wglMakeCurrent(NULL, NULL);
-
-							// Update flag (obviously)
-							scFullscreen = FALSE;
-
-						} else {
-
-							// Rescan displays because user may reconnect them
-							enumerateDisplays();
-
-							// Shift display
-							--scDisplayID;
-
-							// Check if there is > 0 displays
-							if (displays.size() == 0) {
-								MessageBoxA(
-									NULL,
-									"Can not display shader decause no displays found on the system",
-									"Display not found",
-									MB_ICONERROR | MB_OK
-								);
-
-								appLockRequested = FALSE;
-								renderMutex.unlock();
-
-								return TRUE;
-							}
-
-							// Ensure no out of bounds, loop displays
-							if (scDisplayID < 0)
-								scDisplayID = displays.size() - 1;
-
-							if (scDisplayID >= displays.size())
-								scDisplayID = displays.size() - 1;
-
-							currentWindowDimensions = displays[scDisplayID];
-
-							// Window size & location
-							MoveWindow(glWindow, currentWindowDimensions.left, currentWindowDimensions.top, currentWindowDimensions.right - currentWindowDimensions.left, currentWindowDimensions.bottom - currentWindowDimensions.top, TRUE);
-
-							// GL size
-							glWidth = currentWindowDimensions.right - currentWindowDimensions.left;
-							glHeight = currentWindowDimensions.bottom - currentWindowDimensions.top;
-
-							wglMakeCurrent(glDevice, glContext);
-							resizeSC();
-							wglMakeCurrent(NULL, NULL);
-
-							// Update flag (obviously)
-							scFullscreen = FALSE;
-						}
-
-						appLockRequested = FALSE;
-						renderMutex.unlock();
-					});
+					// Obviously, build menu
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) displaySelectionMenu, (std::wstring(L"Primary Display: ") + std::to_wstring(scDisplayID) + L" (" + std::to_wstring(displays[scDisplayID].right - displays[scDisplayID].left) + L"x" + std::to_wstring(displays[scDisplayID].bottom - displays[scDisplayID].top) + L")").c_str());
 					
 					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId, _T("Fullscreen"));
 					trayMenuHandlers.push_back([]() {
@@ -1830,7 +1696,7 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 							// Check if there is > 0 displays
 							if (displays.size() == 0) {
 
-								std::wcout << "Display not found: Can not display shader decause no displays found on the system" << std::endl;
+								std::wcout << "Display not found: Can not display shader decause no displays were found on the system" << std::endl;
 								MessageBoxA(
 									NULL,
 									"Can not display shader decause no displays found on the system",
@@ -1872,7 +1738,7 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 							// Check if there is > 0 displays
 							if (displays.size() == 0) {
 
-								std::wcout << "Display not found: Can not display shader decause no displays found on the system" << std::endl;
+								std::wcout << "Display not found: Can not display shader decause no displays were found on the system" << std::endl;
 								MessageBoxA(
 									NULL,
 									"Can not display shader decause no displays found on the system",
