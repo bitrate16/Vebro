@@ -1019,13 +1019,7 @@ void unloadBufferShader(int buffer_id) {
 // Reloads Shader Pack from scPackPath
 void reloadPack() {
 	if (scPackPath != L"") {
-		// Previous shader is unloaded if file was selected
-		bool unlocked_scene = false;
-		appLockRequested = TRUE;
-		renderMutex.lock();
-		wglMakeCurrent(glDevice, glContext);
-
-		// unload prevouus shaders & resources
+		// unload previous shaders & resources
 		unloadMainShader();
 
 		for (int i = 0; i < 4; ++i)
@@ -1054,6 +1048,10 @@ void reloadPack() {
 			scBufferFrames[i] = 0;
 		}
 
+		glViewport(0, 0, glWidth, glHeight);
+		glClearColor(0, 0, 0, 0);
+		glClear(GL_COLOR_BUFFER_BIT);
+
 		// Reset time & frame
 		glfwSetTime(0.0);
 		scTimestamp = 0.0;
@@ -1072,11 +1070,6 @@ void reloadPack() {
 				L"Failed to load Pack file",
 				MB_ICONERROR | MB_OK
 			);
-
-			wglMakeCurrent(NULL, NULL);
-			appLockRequested = FALSE;
-			renderMutex.unlock();
-			unlocked_scene = true;
 
 			return;
 		}
@@ -1100,11 +1093,6 @@ void reloadPack() {
 					L"Failed to setup Pack",
 					MB_ICONERROR | MB_OK
 				);
-
-				wglMakeCurrent(NULL, NULL);
-				appLockRequested = FALSE;
-				renderMutex.unlock();
-				unlocked_scene = true;
 
 				return;
 			}
@@ -1150,11 +1138,6 @@ void reloadPack() {
 
 				loadMainShaderFromFile(path);
 
-				wglMakeCurrent(NULL, NULL);
-				appLockRequested = FALSE;
-				renderMutex.unlock();
-				unlocked_scene = true;
-
 				return;
 
 			} else if (mainShader.is_object()) {
@@ -1169,11 +1152,6 @@ void reloadPack() {
 						L"Failed to setup Pack",
 						MB_ICONERROR | MB_OK
 					);
-
-					wglMakeCurrent(NULL, NULL);
-					appLockRequested = FALSE;
-					renderMutex.unlock();
-					unlocked_scene = true;
 
 					return;
 				}
@@ -1206,11 +1184,6 @@ void reloadPack() {
 							MB_ICONERROR | MB_OK
 						);
 
-						wglMakeCurrent(NULL, NULL);
-						appLockRequested = FALSE;
-						renderMutex.unlock();
-						unlocked_scene = true;
-
 						return;
 					}
 
@@ -1237,11 +1210,6 @@ void reloadPack() {
 									L"Failed to setup Pack",
 									MB_ICONERROR | MB_OK
 								);
-
-								wglMakeCurrent(NULL, NULL);
-								appLockRequested = FALSE;
-								renderMutex.unlock();
-								unlocked_scene = true;
 
 								return;
 							}
@@ -1272,11 +1240,6 @@ void reloadPack() {
 									MB_ICONERROR | MB_OK
 								);
 
-								wglMakeCurrent(NULL, NULL);
-								appLockRequested = FALSE;
-								renderMutex.unlock();
-								unlocked_scene = true;
-
 								return;
 							}
 
@@ -1294,11 +1257,6 @@ void reloadPack() {
 								L"Failed to setup Pack",
 								MB_ICONERROR | MB_OK
 							);
-
-							wglMakeCurrent(NULL, NULL);
-							appLockRequested = FALSE;
-							renderMutex.unlock();
-							unlocked_scene = true;
 
 							return;
 						}
@@ -1361,11 +1319,6 @@ void reloadPack() {
 								MB_ICONERROR | MB_OK
 							);
 
-							wglMakeCurrent(NULL, NULL);
-							appLockRequested = FALSE;
-							renderMutex.unlock();
-							unlocked_scene = true;
-
 							return;
 						}
 
@@ -1382,11 +1335,6 @@ void reloadPack() {
 									L"Failed to setup Pack",
 									MB_ICONERROR | MB_OK
 								);
-
-								wglMakeCurrent(NULL, NULL);
-								appLockRequested = FALSE;
-								renderMutex.unlock();
-								unlocked_scene = true;
 
 								return;
 							}
@@ -1421,11 +1369,6 @@ void reloadPack() {
 					L"Failed to setup Pack",
 					MB_ICONERROR | MB_OK
 				);
-
-				wglMakeCurrent(NULL, NULL);
-				appLockRequested = FALSE;
-				renderMutex.unlock();
-				unlocked_scene = true;
 
 				return;
 			}
@@ -1497,11 +1440,6 @@ void reloadPack() {
 							MB_ICONERROR | MB_OK
 						);
 
-						wglMakeCurrent(NULL, NULL);
-						appLockRequested = FALSE;
-						renderMutex.unlock();
-						unlocked_scene = true;
-
 						return;
 					}
 
@@ -1533,11 +1471,6 @@ void reloadPack() {
 								MB_ICONERROR | MB_OK
 							);
 
-							wglMakeCurrent(NULL, NULL);
-							appLockRequested = FALSE;
-							renderMutex.unlock();
-							unlocked_scene = true;
-
 							return;
 						}
 
@@ -1564,11 +1497,6 @@ void reloadPack() {
 										L"Failed to setup Pack",
 										MB_ICONERROR | MB_OK
 									);
-
-									wglMakeCurrent(NULL, NULL);
-									appLockRequested = FALSE;
-									renderMutex.unlock();
-									unlocked_scene = true;
 
 									return;
 								}
@@ -1599,11 +1527,6 @@ void reloadPack() {
 										MB_ICONERROR | MB_OK
 									);
 
-									wglMakeCurrent(NULL, NULL);
-									appLockRequested = FALSE;
-									renderMutex.unlock();
-									unlocked_scene = true;
-
 									return;
 								}
 
@@ -1621,11 +1544,6 @@ void reloadPack() {
 									L"Failed to setup Pack",
 									MB_ICONERROR | MB_OK
 								);
-
-								wglMakeCurrent(NULL, NULL);
-								appLockRequested = FALSE;
-								renderMutex.unlock();
-								unlocked_scene = true;
 
 								return;
 							}
@@ -1688,11 +1606,6 @@ void reloadPack() {
 									MB_ICONERROR | MB_OK
 								);
 
-								wglMakeCurrent(NULL, NULL);
-								appLockRequested = FALSE;
-								renderMutex.unlock();
-								unlocked_scene = true;
-
 								return;
 							}
 
@@ -1709,11 +1622,6 @@ void reloadPack() {
 										L"Failed to setup Pack",
 										MB_ICONERROR | MB_OK
 									);
-
-									wglMakeCurrent(NULL, NULL);
-									appLockRequested = FALSE;
-									renderMutex.unlock();
-									unlocked_scene = true;
 
 									return;
 								}
@@ -1749,11 +1657,6 @@ void reloadPack() {
 						MB_ICONERROR | MB_OK
 					);
 
-					wglMakeCurrent(NULL, NULL);
-					appLockRequested = FALSE;
-					renderMutex.unlock();
-					unlocked_scene = true;
-
 					return;
 				}
 			}
@@ -1778,13 +1681,6 @@ void reloadPack() {
 				L"Failed to parse Pack",
 				MB_ICONERROR | MB_OK
 			);
-		}
-
-		// If there loading pack failed, validate mutex & scene unlocked
-		if (!unlocked_scene) {
-			wglMakeCurrent(NULL, NULL);
-			appLockRequested = FALSE;
-			renderMutex.unlock();
 		}
 	}
 }
@@ -3047,22 +2943,88 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 
 							scPackPath = packPath;
 
+							appLockRequested = TRUE;
+							renderMutex.lock();
+							wglMakeCurrent(glDevice, glContext);
 							scPaused = TRUE;
+
 							reloadPack();
+
 							scPaused = FALSE;
+							wglMakeCurrent(NULL, NULL);
+							appLockRequested = FALSE;
+							renderMutex.unlock();
 						}
 					});
 
 					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Reload pack"));
 					trayMenuHandlers.push_back([]() {
 						if (scPackPath.size() != 0) {
+
+							appLockRequested = TRUE;
+							renderMutex.lock();
+							wglMakeCurrent(glDevice, glContext);
 							scPaused = TRUE;
+
 							reloadPack();
+
 							scPaused = FALSE;
+							wglMakeCurrent(NULL, NULL);
+							appLockRequested = FALSE;
+							renderMutex.unlock();
 						}
 					});
 					if (scPackPath == L"")
 						EnableMenuItem(trayMainMenu, menuId - 1, MF_DISABLED | MF_GRAYED); // Disabled
+
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("New pack"));
+					trayMenuHandlers.push_back([]() {
+
+						COMDLG_FILTERSPEC fileTypes[] = {
+							{ L"JSON files", L"*.json" },
+							{ L"Any files", L"*" }
+						};
+
+						std::wstring packPath = saveFile(ARRAYSIZE(fileTypes), fileTypes, L"pack.json");
+
+						if (packPath != L"") {
+
+							scPackPath = packPath;
+
+							// Write default pack and shaders
+							std::ofstream out(scPackPath.c_str());
+							out << defaultPack;
+							out.close();
+
+							// Create Main.glsl only if not exists
+							std::wstring mainPath = std::filesystem::path(scPackPath).parent_path() / L"Main.glsl";
+							if (!std::filesystem::exists(mainPath)) {
+								std::ofstream out1(mainPath.c_str());
+								out1 << defaultPackMainShader;
+								out1.close();
+							}
+
+							// Create BufferA.glsl only if not exists
+							std::wstring bufferPath = std::filesystem::path(scPackPath).parent_path() / L"BufferA.glsl";
+							if (!std::filesystem::exists(bufferPath)) {
+								std::ofstream out2(bufferPath.c_str());
+								out2 << defaultBufferShader;
+								out2.close();
+							}
+
+							appLockRequested = TRUE;
+							renderMutex.lock();
+							wglMakeCurrent(glDevice, glContext);
+							scPaused = TRUE;
+
+							reloadPack();
+
+							scPaused = FALSE;
+							wglMakeCurrent(NULL, NULL);
+							appLockRequested = FALSE;
+							renderMutex.unlock();
+						}
+					});
 
 					// Save pack
 					trayMenuHandlers.push_back([]() {
@@ -3081,11 +3043,6 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 							std::wcout << "Incomplete :: Save pack as" << std::endl;
 						});
 					}
-
-					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("New pack"));
-					trayMenuHandlers.push_back([]() {
-						std::wcout << "Incomplete :: New pack" << std::endl;
-					});
 
 					//
 					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_SEPARATOR, IDM_SEP, _T("SEP"));
@@ -3141,7 +3098,7 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 							{ L"Any files", L"*" }
 						};
 
-						std::wstring shaderPath = saveFile(ARRAYSIZE(fileTypes), fileTypes, L"main.glsl");
+						std::wstring shaderPath = saveFile(ARRAYSIZE(fileTypes), fileTypes, L"Main.glsl");
 
 						appLockRequested = TRUE;
 						renderMutex.lock();
@@ -3404,7 +3361,7 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 
 							if (shaderPath.size() != 0) {
 
-								// Default Main shader
+								// Default Buffer shader
 								std::ofstream out(shaderPath.c_str());
 								out << defaultBufferShader;
 								out.close();

@@ -1,0 +1,16 @@
+{
+    "Main": {
+        "path": "main.glsl",
+        "inputs": [
+            {
+                "type": "BufferA"
+            },
+            null,
+            null,
+            null
+        ]
+    },
+    "BufferA": {
+        "path": "BufferA.glsl"
+    }
+}
