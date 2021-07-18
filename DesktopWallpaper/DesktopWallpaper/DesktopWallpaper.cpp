@@ -2318,7 +2318,7 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 
 								auto j = nlohmann::json::parse(str);
 
-								if (!j.contains("main")) {
+								if (!j.contains("Main")) {
 
 									std::wcout << "Failed to parse Pack file :: Missing Main Shader :: " << packPath << std::endl;
 									MessageBox(
@@ -2475,7 +2475,7 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 
 												std::wstring type = input;
 
-												transform(type.begin(), type.end(), type.begin(), ::towlower);
+												//transform(type.begin(), type.end(), type.begin(), ::towlower);
 
 												SCResource res;
 												res.type = FRAME_BUFFER;
@@ -2530,7 +2530,7 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 
 											std::wstring type = input["type"];
 
-											transform(type.begin(), type.end(), type.begin(), ::towlower);
+											//transform(type.begin(), type.end(), type.begin(), ::towlower);
 
 											SCResource res;
 											bool path_required = false;
@@ -2616,7 +2616,22 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 													return;
 												}
 
-												res.path = input["path"];
+												// Try to open shader from file and don't care
+												// Preserve old path
+												auto old_path = std::filesystem::current_path();
+												auto parent_path = std::filesystem::path(packPath).parent_path();
+												std::filesystem::current_path(parent_path);
+
+												// Construct absolute path
+												std::wstring path = std::wstring_convert<std::codecvt_utf8<wchar_t>>().from_bytes(input["path"]);
+												path = std::filesystem::weakly_canonical(parent_path / std::filesystem::path(path));
+
+												// Restore old path
+												std::filesystem::current_path(old_path);
+
+												std::wcout << "JSON :: Main Shader Input " << i << " path :: " << path << std::endl;
+
+												res.path = path;
 											}
 
 											loadMainShaderResource(res, i);
@@ -2624,10 +2639,10 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 									}
 									
 								} else {
-									std::wcout << "Failed to parse Pack file :: Main Shader should be string or object :: " << packPath << std::endl;
+									std::wcout << "Failed to parse Pack file :: Main Shader should be string path to file or object :: " << packPath << std::endl;
 									MessageBox(
 										NULL,
-										(L"Main Shader should be string or object " + packPath).c_str(),
+										(L"Main Shader should be string path to file or object " + packPath).c_str(),
 										L"Failed to parse Pack file",
 										MB_ICONERROR | MB_OK
 									);
