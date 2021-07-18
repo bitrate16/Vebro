@@ -2292,10 +2292,10 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 
 							if (!f) {
 
-								std::wcout << "Failed to load Pack file :: Failed to open file :: " << packPath << std::endl;
+								std::wcout << "JSON :: Failed to open Pack file :: " << packPath << std::endl;
 								MessageBox(
 									NULL,
-									(L"Failed to load file " + packPath).c_str(),
+									(L"Failed to open file " + packPath).c_str(),
 									L"Failed to load Pack file",
 									MB_ICONERROR | MB_OK
 								);
@@ -2320,11 +2320,11 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 
 								if (!j.contains("Main")) {
 
-									std::wcout << "Failed to parse Pack file :: Missing Main Shader :: " << packPath << std::endl;
+									std::wcout << "JSON :: Missing Main section in Pack file :: " << packPath << std::endl;
 									MessageBox(
 										NULL,
-										(L"Missing Main Shader in " + packPath).c_str(),
-										L"Failed to parse Pack file",
+										(L"Missing Main section in Pack file\n" + packPath).c_str(),
+										L"Failed to setup Pack",
 										MB_ICONERROR | MB_OK
 									);
 
@@ -2338,9 +2338,9 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 
 								auto mainShader = j["Main"];
 
-								// Section "main" in JSON is one of the following types:
+								// Section "Main" in JSON is one of the following types:
 								// 1. json:string: only path to main shader, does not contain buffers or inputs
-								//    Most common: { "main": "/home/work/bed/forever.glsl" }
+								//    Most common: { "Main": "/home/work/bed/forever.glsl" }
 								//
 								// 2. json:object containing:
 								//    1. "path": json:string path to main shader file (relative to program or absolute) (mandatory)
@@ -2389,11 +2389,11 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 									// Validate containing Main shader path
 									if (!mainShader.contains("path") || !mainShader["path"].is_string()) {
 
-										std::wcout << "Failed to parse Pack file :: Main Shader section should have string path :: " << packPath << std::endl;
+										std::wcout << "JSON :: Main section should contain path string :: " << packPath << std::endl;
 										MessageBox(
 											NULL,
-											(L"Main Shader section should have string path " + packPath).c_str(),
-											L"Failed to parse Pack file",
+											(L"Main section should contain path string\n" + packPath).c_str(),
+											L"Failed to setup Pack",
 											MB_ICONERROR | MB_OK
 										);
 
@@ -2425,11 +2425,11 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 									if (mainShader.contains("inputs")) {
 										if (!mainShader["inputs"].is_array()) {
 
-											std::wcout << "Failed to parse Pack file :: Main Shader inputs section should be array :: " << packPath << std::endl;
+											std::wcout << "JSON :: Inputs entry of Main section should be array :: " << packPath << std::endl;
 											MessageBox(
 												NULL,
-												(L"Main Shader section should have string path " + packPath).c_str(),
-												L"Failed to parse Pack file",
+												(L"Inputs entry of Main section should be array\n" + packPath).c_str(),
+												L"Failed to setup Pack",
 												MB_ICONERROR | MB_OK
 											);
 
@@ -2457,11 +2457,11 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 											if (!input.is_object()) { // Input must be object or string buffer name
 												
 												if (!input.is_string()) {
-													std::wcout << "Main Shader Input " << i << " should be object or string containing Buffer name :: " << packPath << std::endl;
+													std::wcout << "JSON :: Input " << i << " of section Main should be object or string containing input Buffer name :: " << packPath << std::endl;
 													MessageBox(
 														NULL,
-														(L"Main Shader Input " + std::to_wstring(i) + L" should be object or string containing Buffer name " + packPath).c_str(),
-														L"Problem while parse Pack file",
+														(L"Input " + std::to_wstring(i) + L" of section Main should be object or string containing input Buffer name\n" + packPath).c_str(),
+														L"Failed to setup Pack",
 														MB_ICONERROR | MB_OK
 													);
 
@@ -2473,9 +2473,9 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 													return;
 												}
 
-												std::wstring type = input;
+												std::wstring type = std::wstring_convert<std::codecvt_utf8<wchar_t>>().from_bytes(input.get<std::string>());
 
-												//transform(type.begin(), type.end(), type.begin(), ::towlower);
+												transform(type.begin(), type.end(), type.begin(), ::towlower);
 
 												SCResource res;
 												res.type = FRAME_BUFFER;
@@ -2488,12 +2488,14 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 													res.buffer_id = 2;
 												else if (type == L"bufferd")  // Buffer D input
 													res.buffer_id = 3;
+												else if (type == L"")
+													continue;
 												else {
-													std::wcout << "Main Shader Input " << i << " contains invalid buffer name " << type << " :: " << packPath << std::endl;
+													std::wcout << "JSON :: Input " << i << " of section Main contains invalid buffer name " << type << " :: " << packPath << std::endl;
 													MessageBox(
 														NULL,
-														(L"Main Shader Input " + std::to_wstring(i) + L" contains invalid buffer name "+ type + L" " + packPath).c_str(),
-														L"Failed to parse Pack file",
+														(L"Input " + std::to_wstring(i) + L" of section Main contains invalid buffer name " + type + L"\n" + packPath).c_str(),
+														L"Failed to setup Pack",
 														MB_ICONERROR | MB_OK
 													);
 
@@ -2512,11 +2514,11 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 
 											if (!input.contains("type") || !input["type"].is_string()) {
 
-												std::wcout << "Failed to parse Pack file :: Main Shader Input " << i << " should have string named type :: " << packPath << std::endl;
+												std::wcout << "JSON :: Input " << i << " of section Main should have string containing type :: " << packPath << std::endl;
 												MessageBox(
 													NULL,
-													(L"Main Shader Input " + std::to_wstring(i) + L" should have string named type " + packPath).c_str(),
-													L"Failed to parse Pack file",
+													(L"Input " + std::to_wstring(i) + L" of section Main should have string containing type\n" + packPath).c_str(),
+													L"Failed to setup Pack",
 													MB_ICONERROR | MB_OK
 												);
 
@@ -2528,9 +2530,9 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 												return;
 											}
 
-											std::wstring type = input["type"];
+											std::wstring type = std::wstring_convert<std::codecvt_utf8<wchar_t>>().from_bytes(input["type"].get<std::string>());
 
-											//transform(type.begin(), type.end(), type.begin(), ::towlower);
+											transform(type.begin(), type.end(), type.begin(), ::towlower);
 
 											SCResource res;
 											bool path_required = false;
@@ -2578,11 +2580,11 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 												std::wcout << "Incomplete :: JSON :: Main Shader Input :: Video" << std::endl;
 												assume_empty = true;
 											} else {
-												std::wcout << "Failed to parse Pack file :: Main Shader Input " << i << " of unsupported type " << type << " :: " << packPath << std::endl;
+												std::wcout << "JSON :: Input " << i << " of section Main is unsupported type " << type << " :: " << packPath << std::endl;
 												MessageBox(
 													NULL,
-													(L"Main Shader Input " + std::to_wstring(i) + L" of unsupported type " + type + L" " + packPath).c_str(),
-													L"Failed to parse Pack file",
+													(L"Input " + std::to_wstring(i) + L" of section Main is unsupported type " + type + L"\n" + packPath).c_str(),
+													L"Failed to setup Pack",
 													MB_ICONERROR | MB_OK
 												);
 
@@ -2600,11 +2602,11 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 											if (path_required) {
 												if (!input.contains("path") || !input["path"].is_string()) {
 
-													std::wcout << "Failed to parse Pack file :: Main Shader Input " << i << " should have string containing path :: " << packPath << std::endl;
+													std::wcout << "JSON :: Input " << i << " of section Main should have string containing path :: " << packPath << std::endl;
 													MessageBox(
 														NULL,
-														(L"Main Shader Input " + std::to_wstring(i) + L" should have string named type " + packPath).c_str(),
-														L"Failed to parse Pack file",
+														(L"Input " + std::to_wstring(i) + L" of section Main should have string containing path\n" + packPath).c_str(),
+														L"Failed to setup Pack",
 														MB_ICONERROR | MB_OK
 													);
 
@@ -2639,11 +2641,11 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 									}
 									
 								} else {
-									std::wcout << "Failed to parse Pack file :: Main Shader should be string path to file or object :: " << packPath << std::endl;
+									std::wcout << "JSON :: Section Main should be object or string path to file :: " << packPath << std::endl;
 									MessageBox(
 										NULL,
-										(L"Main Shader should be string path to file or object " + packPath).c_str(),
-										L"Failed to parse Pack file",
+										(L"Section Main should be object or string path to file\n" + packPath).c_str(),
+										L"Failed to setup Pack",
 										MB_ICONERROR | MB_OK
 									);
 
@@ -2656,24 +2658,351 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 								}
 
 								// Do the same for each buffer
-								// TODO: BUFFERS
+								for (int k = 0; k < 4; ++k) {
+									std::string bufferKey = std::string("Buffer") + "ABCD"[k];
+									std::wstring bufferKeyW = std::wstring(L"Buffer") + L"ABCD"[k];
+
+									if (!j.contains(bufferKey))
+										continue;
+
+									auto bufferShader = j[bufferKey];
+
+									if (bufferShader.is_null())
+										continue;
+
+									// Section "Buffer[A/B/C/D]" in JSON is one of the following types:
+									// 1. json:string: only path to Buffer shader, does not have inputs
+									//    Most common: { "BufferA": "/i/love/hedgehogs.glsl" }
+									//
+									// 2. json:object containing:
+									//    1. "path": json:string path to Buffer shader file (relative to program or absolute) (mandatory)
+									//    2. "inputs": json:array of json:objects (optional) describing shader inputs containing:
+									//       1. "type": json:string one of following (any case) (mandatory):
+									//          1. BufferA
+									// 		    2. BufferB
+									// 		    3. BufferC
+									// 		    4. BufferD
+									//          5. Image
+									// 		    6. Microphone
+									// 		    7. Webcamera
+									// 		    8. Keyboard
+									// 		    9. Audio
+									// 		    10. Video
+									// 	     2. "path": json:string path to file location (relative to program or absolute) (only for Image, Video and Audio types)
+
+									if (bufferShader.is_string()) {
+
+										// Try to open shader from file and don't care
+										// Preserve old path
+										auto old_path = std::filesystem::current_path();
+										auto parent_path = std::filesystem::path(packPath).parent_path();
+										std::filesystem::current_path(parent_path);
+
+										// Construct absolute path
+										std::wstring path = std::wstring_convert<std::codecvt_utf8<wchar_t>>().from_bytes(bufferShader);
+										path = std::filesystem::weakly_canonical(parent_path / std::filesystem::path(path));
+
+										// Restore old path
+										std::filesystem::current_path(old_path);
+
+										std::wcout << "JSON :: " << bufferKeyW << " path :: " << path << std::endl;
+
+										loadMainShaderFromFile(path);
+
+										continue;
+
+									} else if (bufferShader.is_object()) {
+
+										// Validate containing Main shader path
+										if (!bufferShader.contains("path") || !bufferShader["path"].is_string()) {
+
+											std::wcout << "JSON :: " << bufferKeyW << " section should contain path string :: " << packPath << std::endl;
+											MessageBox(
+												NULL,
+												(bufferKeyW + L" section should contain path string\n" + packPath).c_str(),
+												L"Failed to setup Pack",
+												MB_ICONERROR | MB_OK
+											);
+
+											wglMakeCurrent(NULL, NULL);
+											appLockRequested = FALSE;
+											renderMutex.unlock();
+											unlocked_scene = true;
+
+											return;
+										}
+
+										// Try to open shader from file and don't care
+										// Preserve old path
+										auto old_path = std::filesystem::current_path();
+										auto parent_path = std::filesystem::path(packPath).parent_path();
+										std::filesystem::current_path(parent_path);
+
+										// Construct absolute path
+										std::wstring path = std::wstring_convert<std::codecvt_utf8<wchar_t>>().from_bytes(bufferShader["path"]);
+										path = std::filesystem::weakly_canonical(parent_path / std::filesystem::path(path));
+
+										// Restore old path
+										std::filesystem::current_path(old_path);
+
+										std::wcout << "JSON :: " << bufferKeyW << " Shader path :: " << path << std::endl;
+
+										loadBufferShaderFromFile(path, k);
+
+										if (bufferShader.contains("inputs")) {
+											if (!bufferShader["inputs"].is_array()) {
+
+												std::wcout << "JSON :: Inputs entry of " << bufferKeyW << " section should be array :: " << packPath << std::endl;
+												MessageBox(
+													NULL,
+													(L"Inputs entry of " + bufferKeyW + L" section should be array\n" + packPath).c_str(),
+													L"Failed to setup Pack",
+													MB_ICONERROR | MB_OK
+												);
+
+												wglMakeCurrent(NULL, NULL);
+												appLockRequested = FALSE;
+												renderMutex.unlock();
+												unlocked_scene = true;
+
+												return;
+											}
+
+											if (bufferShader["inputs"].size() < 4 || bufferShader["inputs"].size() > 4)
+												std::wcout << "Warning :: JSON :: " << bufferKeyW << " Shader has " << bufferShader["inputs"].size() << " inputs, but 4 required :: " << packPath << std::endl;
+
+											for (int i = 0; i < bufferShader["inputs"].size(); ++i) {
+
+												if (i >= 4)
+													break;
+
+												auto input = bufferShader["inputs"][i];
+
+												if (input.is_null()) // Skip null
+													continue;
+
+												if (!input.is_object()) { // Input must be object or string buffer name
+
+													if (!input.is_string()) {
+														std::wcout << "JSON :: Input " << std::to_wstring(i) << " of section " << bufferKeyW << " should be object or string containing input Buffer name" << packPath << std::endl;
+														MessageBox(
+															NULL,
+															(bufferKeyW + L" Shader Input " + std::to_wstring(i) + L" should be object or string containing input Buffer name\n" + packPath).c_str(),
+															L"Failed to setup Pack",
+															MB_ICONERROR | MB_OK
+														);
+
+														wglMakeCurrent(NULL, NULL);
+														appLockRequested = FALSE;
+														renderMutex.unlock();
+														unlocked_scene = true;
+
+														return;
+													}
+
+													std::wstring type = std::wstring_convert<std::codecvt_utf8<wchar_t>>().from_bytes(input.get<std::string>());
+
+													transform(type.begin(), type.end(), type.begin(), ::towlower);
+
+													SCResource res;
+													res.type = FRAME_BUFFER;
+
+													if (type == L"buffera") // Buffer A input
+														res.buffer_id = 0;
+													else if (type == L"bufferb") // Buffer B input
+														res.buffer_id = 1;
+													else if (type == L"bufferc") // Buffer C input
+														res.buffer_id = 2;
+													else if (type == L"bufferd")  // Buffer D input
+														res.buffer_id = 3;
+													else if (type == L"")
+														continue;
+													else {
+														std::wcout << "JSON :: Input " << i << " of section " << bufferKeyW << " contains invalid buffer name " << type << " :: " << packPath << std::endl;
+														MessageBox(
+															NULL,
+															(L"Input " + std::to_wstring(i) + L" of section " + bufferKeyW + L" contains invalid buffer name " + type + L"\n" + packPath).c_str(),
+															L"Failed to setup Pack",
+															MB_ICONERROR | MB_OK
+														);
+
+														wglMakeCurrent(NULL, NULL);
+														appLockRequested = FALSE;
+														renderMutex.unlock();
+														unlocked_scene = true;
+
+														return;
+													}
+
+													loadBufferShaderResource(res, k, i);
+
+													continue;
+												}
+
+												if (!input.contains("type") || !input["type"].is_string()) {
+
+													std::wcout << "JSON :: Input " << i << " of section " << bufferKeyW << " should have string containing type :: " << packPath << std::endl;
+													MessageBox(
+														NULL,
+														(L"Input " + std::to_wstring(i) + L" of section " + bufferKeyW + L" should have string containing type\n" + packPath).c_str(),
+														L"Failed to setup Pack",
+														MB_ICONERROR | MB_OK
+													);
+
+													wglMakeCurrent(NULL, NULL);
+													appLockRequested = FALSE;
+													renderMutex.unlock();
+													unlocked_scene = true;
+
+													return;
+												}
+
+												std::wstring type = std::wstring_convert<std::codecvt_utf8<wchar_t>>().from_bytes(input["type"].get<std::string>());
+
+												transform(type.begin(), type.end(), type.begin(), ::towlower);
+
+												SCResource res;
+												bool path_required = false;
+												bool assume_empty = false;
+
+												// 1. BufferA
+												// 2. BufferB
+												// 3. BufferC
+												// 4. BufferD
+												// 5. Image
+												// 6. Microphone
+												// 7. Webcamera
+												// 8. Keyboard
+												// 9. Audio
+												// 10. Video
+
+												if (type == L"buffera") { // Buffer A input
+													res.type = FRAME_BUFFER;
+													res.buffer_id = 0;
+												} else if (type == L"bufferb") { // Buffer B input
+													res.type = FRAME_BUFFER;
+													res.buffer_id = 1;
+												} else if (type == L"bufferc") { // Buffer C input
+													res.type = FRAME_BUFFER;
+													res.buffer_id = 2;
+												} else if (type == L"bufferd") { // Buffer D input
+													res.type = FRAME_BUFFER;
+													res.buffer_id = 3;
+												} else if (type == L"image") { // Image input
+													res.type = IMAGE_TEXTURE;
+													path_required = true;
+												} else if (type == L"microphone") { // Microphone
+													std::wcout << "Incomplete :: JSON :: " << bufferKeyW << " Shader Input :: Microphone" << std::endl;
+													assume_empty = true;
+												} else if (type == L"webcamera") { // Webcamera
+													std::wcout << "Incomplete :: JSON :: " << bufferKeyW << " Shader Input :: Webcamera" << std::endl;
+													assume_empty = true;
+												} else if (type == L"keyboard") { // Keyboard
+													std::wcout << "Incomplete :: JSON :: " << bufferKeyW << " Shader Input :: Keyboard" << std::endl;
+													assume_empty = true;
+												} else if (type == L"audio") { // Audio
+													std::wcout << "Incomplete :: JSON :: " << bufferKeyW << " Shader Input :: Audio" << std::endl;
+													assume_empty = true;
+												} else if (type == L"video") { // Video
+													std::wcout << "Incomplete :: JSON :: " << bufferKeyW << " Shader Input :: Video" << std::endl;
+													assume_empty = true;
+												} else {
+													std::wcout << "JSON :: Input " << i << " of section " << bufferKeyW << " is unsupported type " << type << " :: " << packPath << std::endl;
+													MessageBox(
+														NULL,
+														(L"Input " + std::to_wstring(i) + L" of section " + bufferKeyW + L" is unsupported type " + type + L"\n" + packPath).c_str(),
+														L"Failed to setup Pack",
+														MB_ICONERROR | MB_OK
+													);
+
+													wglMakeCurrent(NULL, NULL);
+													appLockRequested = FALSE;
+													renderMutex.unlock();
+													unlocked_scene = true;
+
+													return;
+												}
+
+												if (assume_empty)
+													continue;
+
+												if (path_required) {
+													if (!input.contains("path") || !input["path"].is_string()) {
+
+														std::wcout << "JSON :: Input " << i << " of section " << bufferKeyW << " should have string containing path :: " << packPath << std::endl;
+														MessageBox(
+															NULL,
+															(L"Input " + std::to_wstring(i) + L" of section " + bufferKeyW + L" should have string containing path\n" + packPath).c_str(),
+															L"Failed to setup Pack",
+															MB_ICONERROR | MB_OK
+														);
+
+														wglMakeCurrent(NULL, NULL);
+														appLockRequested = FALSE;
+														renderMutex.unlock();
+														unlocked_scene = true;
+
+														return;
+													}
+
+													// Try to open shader from file and don't care
+													// Preserve old path
+													auto old_path = std::filesystem::current_path();
+													auto parent_path = std::filesystem::path(packPath).parent_path();
+													std::filesystem::current_path(parent_path);
+
+													// Construct absolute path
+													std::wstring path = std::wstring_convert<std::codecvt_utf8<wchar_t>>().from_bytes(input["path"]);
+													path = std::filesystem::weakly_canonical(parent_path / std::filesystem::path(path));
+
+													// Restore old path
+													std::filesystem::current_path(old_path);
+
+													std::wcout << "JSON :: " << bufferKeyW << " Shader Input " << i << " path :: " << path << std::endl;
+
+													res.path = path;
+												}
+
+												loadBufferShaderResource(res, k, i);
+											}
+										}
+
+									} else {
+										std::wcout << "Failed to parse Pack file :: Main Shader should be string path to file or object :: " << packPath << std::endl;
+										MessageBox(
+											NULL,
+											(L"Main Shader should be string path to file or object\n" + packPath).c_str(),
+											L"Failed to setup Pack",
+											MB_ICONERROR | MB_OK
+										);
+
+										wglMakeCurrent(NULL, NULL);
+										appLockRequested = FALSE;
+										renderMutex.unlock();
+										unlocked_scene = true;
+
+										return;
+									}
+								}
 
 							} catch (const nlohmann::json::exception& ex) { // Catch JSON exceptions
 
-								std::wcout << "Failed to parse Pack file :: Failed to parse JSON :: " << packPath << std::endl;
+								std::wcout << "JSON :: Failed to parse Pack JSON :: " << ex.what() << " :: " << packPath << std::endl;
+								std::string what = ex.what();
+								std::wstring wwhatt/*!!??*/ = std::wstring(what.begin(), what.end());
 								MessageBox(
 									NULL,
-									(L"Failed to parse JSON " + packPath).c_str(),
-									L"Failed to parse Pack file",
+									(L"Failed to parse Pack JSON:\n" + wwhatt + L"\n" + packPath).c_str(),
+									L"Failed to parse Pack",
 									MB_ICONERROR | MB_OK
 								);
 							} catch (...) { // Catch other exceptions
 
-								std::wcout << "Failed to parse Pack file :: Unresolved exception :: " << packPath << std::endl;
+								std::wcout << "Failed to parse Pack with Unresolved exception :: " << packPath << std::endl;
 								MessageBox(
 									NULL,
-									(L"Unresolved exception " + packPath).c_str(),
-									L"Failed to parse Pack file",
+									(L"Failed to parse Pack with Unresolved exception\n" + packPath).c_str(),
+									L"Failed to parse Pack",
 									MB_ICONERROR | MB_OK
 								);
 							}
