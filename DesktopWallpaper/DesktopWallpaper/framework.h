@@ -47,3 +47,4 @@
 #include <GLFW/glfw3.h>
 
 #include "lodepng.h"
+#include "json.hpp"

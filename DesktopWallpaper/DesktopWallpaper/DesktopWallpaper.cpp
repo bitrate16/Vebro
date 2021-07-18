@@ -13,6 +13,8 @@ HWND           trayWindow;
 HICON          trayIcon;
 
 // Main Tray menu
+// Base disabled items id (Items used only for text display with no function)
+#define TRAY_MENU_BASE_DISABLED_ID 30500
 // Base menu ID
 #define TRAY_MENU_BASE_ID 40001
 
@@ -107,6 +109,7 @@ POINT  scMouse = { 0, 0 };             // Holds last mouse location
 int    scMinFrameTime   = 1000 / 30;   // Holds minimal frame time in ms (1000 / FPS)
 int    scFPSMode        = 30;          // Just defines the FPS used
 BOOL   scSoundEnabled   = FALSE;       // Indicates if sound capture enabled / disabled. Used to force disable sound capture if shader uses audio input
+std::wstring scPackPath = L"";         // Defines full path for pack locations
 
 // ID's for all shader inputs
 // Should only be changed via special functions to correctly process GC
@@ -572,6 +575,14 @@ void unloadResources() {
 
 		scResources[i].empty = TRUE;
 	}
+
+	// Unload all inputs for all shaders
+	for (int i = 0; i < 4; ++i) {
+		scMainShaderInputs[i] = -1;
+
+		for (int k = 0; k < 4; ++k)
+			scBufferShaderInputs[i][k] = -1;
+	}
 }
 
 // Performs load of main shader resource
@@ -702,7 +713,7 @@ std::wstring openFile(int fileTypesSize, const COMDLG_FILTERSPEC* fileTypes) {
 }
 
 // Performs simple operation of opening file picker with specified extensions allowed for file save
-std::wstring saveFile(int fileTypesSize, const COMDLG_FILTERSPEC* fileTypes) {
+std::wstring saveFile(int fileTypesSize, const COMDLG_FILTERSPEC* fileTypes, const wchar_t* defaultFileName = NULL) {
 
 	std::wstring result;
 	HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
@@ -718,6 +729,8 @@ std::wstring saveFile(int fileTypesSize, const COMDLG_FILTERSPEC* fileTypes) {
 
 			// Set extension filter
 			pFileSave->SetFileTypes(fileTypesSize, fileTypes);
+			if (defaultFileName != NULL)
+				pFileSave->SetFileName(defaultFileName);
 
 			// Show the Open dialog box.
 			hr = pFileSave->Show(NULL);
@@ -855,7 +868,7 @@ ShaderCompilationStatus compileShaderFromFile(const std::wstring& path) {
 
 	if (!f) {
 
-		std::wcout << "Failed to load Shader file: " << (L"Failed to load file " + path) << std::endl;
+		std::wcout << "Failed to load Shader file: " << "Failed to load file [" << path << ']' << std::endl;
 		MessageBox(
 			NULL,
 			(L"Failed to load file " + path).c_str(),
@@ -1269,6 +1282,7 @@ void renderSC() {
 						if (scBufferShaderInputs[i][k] == -1) {
 							glUniform3f(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelResolutionUniforms[k]), (GLfloat) 0, (GLfloat) 0, (GLfloat) 0);
 							glUniform1f(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelTimeUniforms[k]), (GLfloat) 0);
+							glUniform1i(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelUniforms[k]), 0); // GL_TEXTURE0 which is unused
 							continue;
 						}
 
@@ -1276,6 +1290,7 @@ void renderSC() {
 							std::wcout << "Can not configure iChannelResolution for input " << k << " in Buffer " << i << ", input points to empty resource, scResources corrupt" << std::endl;
 							glUniform3f(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelResolutionUniforms[k]), (GLfloat) 0, (GLfloat) 0, (GLfloat) 0);
 							glUniform1f(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelTimeUniforms[k]), (GLfloat) 0);
+							glUniform1i(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelUniforms[k]), 0); // GL_TEXTURE0 which is unused
 							continue;
 						}
 
@@ -1285,9 +1300,9 @@ void renderSC() {
 								// Bind texture
 								// TODO: In parallel rendering use different CL_TEXTURE* to avoid data intersection
 								// TODO: Support for Sampler3D, e.t.c.
-								glActiveTexture(GL_TEXTURE4 + i * 4 + k);
+								glActiveTexture(GL_TEXTURE5 + i * 4 + k);
 								glBindTexture(GL_TEXTURE_2D, scResources[scBufferShaderInputs[i][k]].resource.bind);
-								glUniform1i(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelUniforms[k]), 4 + i * 4 + k);
+								glUniform1i(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelUniforms[k]), 5 + i * 4 + k);
 
 								// Width & Height 
 								glUniform3f(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelResolutionUniforms[k]), (GLfloat) scResources[scBufferShaderInputs[i][k]].resource.width, (GLfloat) scResources[scBufferShaderInputs[i][k]].resource.height, (GLfloat) 0);
@@ -1327,9 +1342,9 @@ void renderSC() {
 								// Bind texture
 								// TODO: In parallel rendering use different CL_TEXTURE* to avoid data intersection
 								// TODO: Support for Sampler3D, e.t.c.
-								glActiveTexture(GL_TEXTURE4 + i * 4 + k);
+								glActiveTexture(GL_TEXTURE5 + i * 4 + k);
 								glBindTexture(GL_TEXTURE_2D, glBufferShaderFramebufferTextures[scBufferFrames[scResources[scBufferShaderInputs[i][k]].resource.buffer_id] % 2][scResources[scBufferShaderInputs[i][k]].resource.buffer_id]);
-								glUniform1i(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelUniforms[k]), 4 + i * 4 + k);
+								glUniform1i(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelUniforms[k]), 5 + i * 4 + k);
 
 								// Width & Height 
 								glUniform3f(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelResolutionUniforms[k]), (GLfloat) glWidth, (GLfloat) glHeight, (GLfloat) 0);
@@ -1384,6 +1399,7 @@ void renderSC() {
 				if (scMainShaderInputs[k] == -1) {
 					glUniform3f(glGetUniformLocation(glMainShaderProgramID, iChannelResolutionUniforms[k]), (GLfloat) 0, (GLfloat) 0, (GLfloat) 0);
 					glUniform1f(glGetUniformLocation(glMainShaderProgramID, iChannelTimeUniforms[k]), (GLfloat) 0);
+					glUniform1i(glGetUniformLocation(glMainShaderProgramID, iChannelUniforms[k]), 0); // GL_TEXTURE0 which is unused
 					continue;
 				}
 
@@ -1391,6 +1407,7 @@ void renderSC() {
 					std::wcout << "Can not configure iChannelResolution for input " << k << " in Main Shader, input points to empty resource, scResources corrupt" << std::endl;
 					glUniform3f(glGetUniformLocation(glMainShaderProgramID, iChannelResolutionUniforms[k]), (GLfloat) 0, (GLfloat) 0, (GLfloat) 0);
 					glUniform1f(glGetUniformLocation(glMainShaderProgramID, iChannelTimeUniforms[k]), (GLfloat) 0);
+					glUniform1i(glGetUniformLocation(glMainShaderProgramID, iChannelUniforms[k]), 0); // GL_TEXTURE0 which is unused
 					continue;
 				}
 
@@ -1400,9 +1417,9 @@ void renderSC() {
 						// Bind texture
 						// TODO: In parallel rendering use different CL_TEXTURE* to avoid data intersection
 						// TODO: Support for Sampler3D, e.t.c.
-						glActiveTexture(GL_TEXTURE0 + k);
+						glActiveTexture(GL_TEXTURE1 + k);
 						glBindTexture(GL_TEXTURE_2D, scResources[scMainShaderInputs[k]].resource.bind);
-						glUniform1i(glGetUniformLocation(glMainShaderProgramID, iChannelUniforms[k]), k);
+						glUniform1i(glGetUniformLocation(glMainShaderProgramID, iChannelUniforms[k]), 1 + k);
 
 						// Width & Height 
 						glUniform3f(glGetUniformLocation(glMainShaderProgramID, iChannelResolutionUniforms[k]), (GLfloat) scResources[scMainShaderInputs[k]].resource.width, (GLfloat) scResources[scMainShaderInputs[k]].resource.height, (GLfloat) 0);
@@ -1442,9 +1459,9 @@ void renderSC() {
 						// Bind texture
 						// TODO: In parallel rendering use different CL_TEXTURE* to avoid data intersection
 						// TODO: Support for Sampler3D, e.t.c.
-						glActiveTexture(GL_TEXTURE0 + k);
+						glActiveTexture(GL_TEXTURE1 + k);
 						glBindTexture(GL_TEXTURE_2D, glBufferShaderFramebufferTextures[scBufferFrames[scResources[scMainShaderInputs[k]].resource.buffer_id] % 2][scResources[scMainShaderInputs[k]].resource.buffer_id]);
-						glUniform1i(glGetUniformLocation(glMainShaderProgramID, iChannelUniforms[k]), k);
+						glUniform1i(glGetUniformLocation(glMainShaderProgramID, iChannelUniforms[k]), 1 + k);
 
 						// Width & Height 
 						glUniform3f(glGetUniformLocation(glMainShaderProgramID, iChannelResolutionUniforms[k]), (GLfloat) glWidth, (GLfloat) glHeight, (GLfloat) 0);
@@ -1691,9 +1708,11 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 					}
 
 					int menuId = TRAY_MENU_BASE_ID;
+					int disabledId = TRAY_MENU_BASE_DISABLED_ID;
 					trayMainMenu = CreatePopupMenu();
 
 					HMENU displaySelectionMenu = CreatePopupMenu();
+					
 					for (int displayId = 0; displayId < displays.size(); ++displayId) {
 
 						std::wstring displayDesc = std::wstring(L"Display ") + std::to_wstring(displayId) + L" (" + std::to_wstring(displays[displayId].right - displays[displayId].left) + L"x" + std::to_wstring(displays[displayId].bottom - displays[displayId].top) + L")";
@@ -1856,6 +1875,7 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 						appLockRequested = TRUE;
 						renderMutex.lock();
 
+						// TODO: Push window to WorkerW if it was reset (explorer.exe restart)
 						// Rescan displays because user may reconnect them
 						enumerateDisplays();
 
@@ -2032,6 +2052,41 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 						renderMutex.unlock();
 					});
 
+					bool inputs_exist = false;
+					for (int i = 0; i < 4; ++i) 
+						if (scMainShaderInputs[i] != -1) {
+							inputs_exist = true;
+							break;
+						}
+
+					if (!inputs_exist)
+						for (int k = 0; k < 4; ++k)
+							for (int i = 0; i < 4; ++i) {
+								if (scBufferShaderInputs[i][k] != -1) {
+									inputs_exist = true;
+									break;
+								}
+
+								if (inputs_exist)
+									break;
+							}
+					
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Clear all inputs"));
+					trayMenuHandlers.push_back([]() {
+
+						appLockRequested = TRUE;
+						renderMutex.lock();
+						wglMakeCurrent(glDevice, glContext);
+
+						unloadResources();
+
+						wglMakeCurrent(NULL, NULL);
+						appLockRequested = FALSE;
+						renderMutex.unlock();
+					});
+					if (!inputs_exist)
+						EnableMenuItem(trayMainMenu, menuId - 1, MF_DISABLED | MF_GRAYED); // Disabled
+
 					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Reload shaders"));
 					trayMenuHandlers.push_back([]() {
 
@@ -2048,11 +2103,6 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 						wglMakeCurrent(NULL, NULL);
 						appLockRequested = FALSE;
 						renderMutex.unlock();
-					});
-
-					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Reload pack"));
-					trayMenuHandlers.push_back([]() {
-						std::wcout << "Incomplete :: Reload pack" << std::endl;
 					});
 
 					//
@@ -2176,20 +2226,476 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_SEPARATOR, IDM_SEP, _T("SEP"));
 					//
 
+					// Show short pack path
+					if (scPackPath != L"") {
+						InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, disabledId++, (L"Opened: " + std::filesystem::path(scPackPath).filename().wstring()).c_str());
+						EnableMenuItem(trayMainMenu, disabledId - 1, MF_DISABLED | MF_GRAYED); // Disabled
+
+						InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Close pack"));
+						trayMenuHandlers.push_back([]() {
+
+							appLockRequested = TRUE;
+							renderMutex.lock();
+							wglMakeCurrent(glDevice, glContext);
+
+							// Unload everything
+							unloadMainShader();
+
+							for (int i = 0; i < 4; ++i)
+								if (glBufferShaderProgramIDs[i] != -1)
+									unloadBufferShader(i);
+
+							unloadResources();
+
+							wglMakeCurrent(NULL, NULL);
+							appLockRequested = FALSE;
+							renderMutex.unlock();
+
+							scPackPath = L"";
+						});
+
+						InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_SEPARATOR, IDM_SEP, _T("SEP"));
+					}
+
 					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Open pack"));
 					trayMenuHandlers.push_back([]() {
-						std::wcout << "Incomplete :: Open pack" << std::endl;
+
+						COMDLG_FILTERSPEC fileTypes[] = {
+							{ L"JSON files", L"*.json" },
+							{ L"Any files", L"*" }
+						};
+
+						std::wstring packPath = openFile(ARRAYSIZE(fileTypes), fileTypes);
+
+						if (packPath.size() != 0) {
+
+							scPackPath = packPath;
+
+							// Previous shader is unloaded if file was selected
+							bool unlocked_scene = false;
+							appLockRequested = TRUE;
+							renderMutex.lock();
+							wglMakeCurrent(glDevice, glContext);
+
+							// unload prevouus shaders & resources
+							unloadMainShader();
+
+							for (int i = 0; i < 4; ++i)
+								if (glBufferShaderProgramIDs[i] != -1)
+									unloadBufferShader(i);
+
+							unloadResources();
+							
+							// Read JSON from path & validate
+							std::ifstream f(packPath);
+							std::string str;
+
+							if (!f) {
+
+								std::wcout << "Failed to load Pack file :: Failed to open file :: " << packPath << std::endl;
+								MessageBox(
+									NULL,
+									(L"Failed to load file " + packPath).c_str(),
+									L"Failed to load Pack file",
+									MB_ICONERROR | MB_OK
+								);
+
+								wglMakeCurrent(NULL, NULL);
+								appLockRequested = FALSE;
+								renderMutex.unlock();
+								unlocked_scene = true;
+
+								return;
+							}
+
+							f.seekg(0, std::ios::end);
+							str.reserve(f.tellg());
+							f.seekg(0, std::ios::beg);
+
+							str.assign((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+
+							try {
+
+								auto j = nlohmann::json::parse(str);
+
+								if (!j.contains("main")) {
+
+									std::wcout << "Failed to parse Pack file :: Missing Main Shader :: " << packPath << std::endl;
+									MessageBox(
+										NULL,
+										(L"Missing Main Shader in " + packPath).c_str(),
+										L"Failed to parse Pack file",
+										MB_ICONERROR | MB_OK
+									);
+
+									wglMakeCurrent(NULL, NULL);
+									appLockRequested = FALSE;
+									renderMutex.unlock();
+									unlocked_scene = true;
+
+									return;
+								}
+
+								auto mainShader = j["Main"];
+
+								// Section "main" in JSON is one of the following types:
+								// 1. json:string: only path to main shader, does not contain buffers or inputs
+								//    Most common: { "main": "/home/work/bed/forever.glsl" }
+								//
+								// 2. json:object containing:
+								//    1. "path": json:string path to main shader file (relative to program or absolute) (mandatory)
+								//    2. "inputs": json:array of json:objects (optional) describing shader inputs containing:
+								//       1. "type": json:string one of following (any case) (mandatory):
+								//          1. BufferA
+								// 		    2. BufferB
+								// 		    3. BufferC
+								// 		    4. BufferD
+								//          5. Image
+								// 		    6. Microphone
+								// 		    7. Webcamera
+								// 		    8. Keyboard
+								// 		    9. Audio
+								// 		    10. Video
+								// 	     2. "path": json:string path to file location (relative to program or absolute) (only for Image, Video and Audio types)
+								
+								if (mainShader.is_string()) {
+
+									// Try to open shader from file and don't care
+									// Preserve old path
+									auto old_path = std::filesystem::current_path();
+									auto parent_path = std::filesystem::path(packPath).parent_path();
+									std::filesystem::current_path(parent_path);
+
+									// Construct absolute path
+									std::wstring path = std::wstring_convert<std::codecvt_utf8<wchar_t>>().from_bytes(mainShader);
+									path = std::filesystem::weakly_canonical(parent_path / std::filesystem::path(path));
+
+									// Restore old path
+									std::filesystem::current_path(old_path);
+
+									std::wcout << "JSON :: Main Shader path :: " << path << std::endl;
+
+									loadMainShaderFromFile(path);
+
+									wglMakeCurrent(NULL, NULL);
+									appLockRequested = FALSE;
+									renderMutex.unlock();
+									unlocked_scene = true;
+
+									return;
+
+								} else if (mainShader.is_object()) {
+
+									// Validate containing Main shader path
+									if (!mainShader.contains("path") || !mainShader["path"].is_string()) {
+
+										std::wcout << "Failed to parse Pack file :: Main Shader section should have string path :: " << packPath << std::endl;
+										MessageBox(
+											NULL,
+											(L"Main Shader section should have string path " + packPath).c_str(),
+											L"Failed to parse Pack file",
+											MB_ICONERROR | MB_OK
+										);
+
+										wglMakeCurrent(NULL, NULL);
+										appLockRequested = FALSE;
+										renderMutex.unlock();
+										unlocked_scene = true;
+
+										return;
+									}
+
+									// Try to open shader from file and don't care
+									// Preserve old path
+									auto old_path = std::filesystem::current_path();
+									auto parent_path = std::filesystem::path(packPath).parent_path();
+									std::filesystem::current_path(parent_path);
+
+									// Construct absolute path
+									std::wstring path = std::wstring_convert<std::codecvt_utf8<wchar_t>>().from_bytes(mainShader["path"]);
+									path = std::filesystem::weakly_canonical(parent_path / std::filesystem::path(path));
+
+									// Restore old path
+									std::filesystem::current_path(old_path);
+
+									std::wcout << "JSON :: Main Shader path :: " << path << std::endl;
+
+									loadMainShaderFromFile(path);
+
+									if (mainShader.contains("inputs")) {
+										if (!mainShader["inputs"].is_array()) {
+
+											std::wcout << "Failed to parse Pack file :: Main Shader inputs section should be array :: " << packPath << std::endl;
+											MessageBox(
+												NULL,
+												(L"Main Shader section should have string path " + packPath).c_str(),
+												L"Failed to parse Pack file",
+												MB_ICONERROR | MB_OK
+											);
+
+											wglMakeCurrent(NULL, NULL);
+											appLockRequested = FALSE;
+											renderMutex.unlock();
+											unlocked_scene = true;
+
+											return;
+										}
+
+										if (mainShader["inputs"].size() < 4 || mainShader["inputs"].size() > 4)
+											std::wcout << "Warning :: JSON :: Main Shader has " << mainShader["inputs"].size() << " inputs, but 4 required :: " << packPath << std::endl;
+
+										for (int i = 0; i < mainShader["inputs"].size(); ++i) {
+
+											if (i >= 4)
+												break;
+
+											auto input = mainShader["inputs"][i];
+
+											if (input.is_null()) // Skip null
+												continue;
+
+											if (!input.is_object()) { // Input must be object or string buffer name
+												
+												if (!input.is_string()) {
+													std::wcout << "Main Shader Input " << i << " should be object or string containing Buffer name :: " << packPath << std::endl;
+													MessageBox(
+														NULL,
+														(L"Main Shader Input " + std::to_wstring(i) + L" should be object or string containing Buffer name " + packPath).c_str(),
+														L"Problem while parse Pack file",
+														MB_ICONERROR | MB_OK
+													);
+
+													wglMakeCurrent(NULL, NULL);
+													appLockRequested = FALSE;
+													renderMutex.unlock();
+													unlocked_scene = true;
+
+													return;
+												}
+
+												std::wstring type = input;
+
+												transform(type.begin(), type.end(), type.begin(), ::towlower);
+
+												SCResource res;
+												res.type = FRAME_BUFFER;
+
+												if (type == L"buffera") // Buffer A input
+													res.buffer_id = 0;
+												else if (type == L"bufferb") // Buffer B input
+													res.buffer_id = 1;
+												else if (type == L"bufferc") // Buffer C input
+													res.buffer_id = 2;
+												else if (type == L"bufferd")  // Buffer D input
+													res.buffer_id = 3;
+												else {
+													std::wcout << "Main Shader Input " << i << " contains invalid buffer name " << type << " :: " << packPath << std::endl;
+													MessageBox(
+														NULL,
+														(L"Main Shader Input " + std::to_wstring(i) + L" contains invalid buffer name "+ type + L" " + packPath).c_str(),
+														L"Failed to parse Pack file",
+														MB_ICONERROR | MB_OK
+													);
+
+													wglMakeCurrent(NULL, NULL);
+													appLockRequested = FALSE;
+													renderMutex.unlock();
+													unlocked_scene = true;
+
+													return;
+												}
+
+												loadMainShaderResource(res, i);
+
+												continue;
+											}
+
+											if (!input.contains("type") || !input["type"].is_string()) {
+
+												std::wcout << "Failed to parse Pack file :: Main Shader Input " << i << " should have string named type :: " << packPath << std::endl;
+												MessageBox(
+													NULL,
+													(L"Main Shader Input " + std::to_wstring(i) + L" should have string named type " + packPath).c_str(),
+													L"Failed to parse Pack file",
+													MB_ICONERROR | MB_OK
+												);
+
+												wglMakeCurrent(NULL, NULL);
+												appLockRequested = FALSE;
+												renderMutex.unlock();
+												unlocked_scene = true;
+
+												return;
+											}
+
+											std::wstring type = input["type"];
+
+											transform(type.begin(), type.end(), type.begin(), ::towlower);
+
+											SCResource res;
+											bool path_required = false;
+											bool assume_empty = false;
+
+											// 1. BufferA
+											// 2. BufferB
+											// 3. BufferC
+											// 4. BufferD
+											// 5. Image
+											// 6. Microphone
+											// 7. Webcamera
+											// 8. Keyboard
+											// 9. Audio
+											// 10. Video
+
+											if (type == L"buffera") { // Buffer A input
+												res.type = FRAME_BUFFER;
+												res.buffer_id = 0;
+											} else if (type == L"bufferb") { // Buffer B input
+												res.type = FRAME_BUFFER;
+												res.buffer_id = 1;
+											} else if (type == L"bufferc") { // Buffer C input
+												res.type = FRAME_BUFFER;
+												res.buffer_id = 2;
+											} else if (type == L"bufferd") { // Buffer D input
+												res.type = FRAME_BUFFER;
+												res.buffer_id = 3;
+											} else if (type == L"image") { // Image input
+												res.type = IMAGE_TEXTURE;
+												path_required = true;
+											} else if (type == L"microphone") { // Microphone
+												std::wcout << "Incomplete :: JSON :: Main Shader Input :: Microphone" << std::endl;
+												assume_empty = true;
+											} else if (type == L"webcamera") { // Webcamera
+												std::wcout << "Incomplete :: JSON :: Main Shader Input :: Webcamera" << std::endl;
+												assume_empty = true;
+											} else if (type == L"keyboard") { // Keyboard
+												std::wcout << "Incomplete :: JSON :: Main Shader Input :: Keyboard" << std::endl;
+												assume_empty = true;
+											} else if (type == L"audio") { // Audio
+												std::wcout << "Incomplete :: JSON :: Main Shader Input :: Audio" << std::endl;
+												assume_empty = true;
+											} else if (type == L"video") { // Video
+												std::wcout << "Incomplete :: JSON :: Main Shader Input :: Video" << std::endl;
+												assume_empty = true;
+											} else {
+												std::wcout << "Failed to parse Pack file :: Main Shader Input " << i << " of unsupported type " << type << " :: " << packPath << std::endl;
+												MessageBox(
+													NULL,
+													(L"Main Shader Input " + std::to_wstring(i) + L" of unsupported type " + type + L" " + packPath).c_str(),
+													L"Failed to parse Pack file",
+													MB_ICONERROR | MB_OK
+												);
+
+												wglMakeCurrent(NULL, NULL);
+												appLockRequested = FALSE;
+												renderMutex.unlock();
+												unlocked_scene = true;
+
+												return;
+											}
+
+											if (assume_empty)
+												continue;
+
+											if (path_required) {
+												if (!input.contains("path") || !input["path"].is_string()) {
+
+													std::wcout << "Failed to parse Pack file :: Main Shader Input " << i << " should have string containing path :: " << packPath << std::endl;
+													MessageBox(
+														NULL,
+														(L"Main Shader Input " + std::to_wstring(i) + L" should have string named type " + packPath).c_str(),
+														L"Failed to parse Pack file",
+														MB_ICONERROR | MB_OK
+													);
+
+													wglMakeCurrent(NULL, NULL);
+													appLockRequested = FALSE;
+													renderMutex.unlock();
+													unlocked_scene = true;
+
+													return;
+												}
+
+												res.path = input["path"];
+											}
+
+											loadMainShaderResource(res, i);
+										}
+									}
+									
+								} else {
+									std::wcout << "Failed to parse Pack file :: Main Shader should be string or object :: " << packPath << std::endl;
+									MessageBox(
+										NULL,
+										(L"Main Shader should be string or object " + packPath).c_str(),
+										L"Failed to parse Pack file",
+										MB_ICONERROR | MB_OK
+									);
+
+									wglMakeCurrent(NULL, NULL);
+									appLockRequested = FALSE;
+									renderMutex.unlock();
+									unlocked_scene = true;
+
+									return;
+								}
+
+								// Do the same for each buffer
+								// TODO: BUFFERS
+
+							} catch (const nlohmann::json::exception& ex) { // Catch JSON exceptions
+
+								std::wcout << "Failed to parse Pack file :: Failed to parse JSON :: " << packPath << std::endl;
+								MessageBox(
+									NULL,
+									(L"Failed to parse JSON " + packPath).c_str(),
+									L"Failed to parse Pack file",
+									MB_ICONERROR | MB_OK
+								);
+							} catch (...) { // Catch other exceptions
+
+								std::wcout << "Failed to parse Pack file :: Unresolved exception :: " << packPath << std::endl;
+								MessageBox(
+									NULL,
+									(L"Unresolved exception " + packPath).c_str(),
+									L"Failed to parse Pack file",
+									MB_ICONERROR | MB_OK
+								);
+							}
+							
+							// If there loading pack failed, validate mutex & scene unlocked
+							if (!unlocked_scene) {
+								wglMakeCurrent(NULL, NULL);
+								appLockRequested = FALSE;
+								renderMutex.unlock();
+							}
+						}
 					});
 
-					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Save pack"));
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Reload pack"));
 					trayMenuHandlers.push_back([]() {
+						std::wcout << "Incomplete :: Reload pack" << std::endl;
+					});
+					if (scPackPath == L"")
+						EnableMenuItem(trayMainMenu, menuId - 1, MF_DISABLED | MF_GRAYED); // Disabled
+
+					// Save pack
+					trayMenuHandlers.push_back([]() {
+
+						// Prompt if there was no pack open
 						std::wcout << "Incomplete :: Save pack" << std::endl;
 					});
 
-					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Save pack as"));
-					trayMenuHandlers.push_back([]() {
-						std::wcout << "Incomplete :: Save pack as" << std::endl;
-					});
+					if (scPackPath == L"") 
+						InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Save pack"));
+					else {
+						InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Save pack"));
+
+						InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Save pack as"));
+						trayMenuHandlers.push_back([]() {
+							std::wcout << "Incomplete :: Save pack as" << std::endl;
+						});
+					}
 
 					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("New pack"));
 					trayMenuHandlers.push_back([]() {
@@ -2209,7 +2715,7 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 
 						COMDLG_FILTERSPEC fileTypes[] = {
 							{ L"GLSL files", L"*.glsl" },
-							{ L"Any file", L"*" }
+							{ L"Any files", L"*" }
 						};
 
 						std::wstring shaderPath = openFile(ARRAYSIZE(fileTypes), fileTypes);
@@ -2247,10 +2753,10 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 
 						COMDLG_FILTERSPEC fileTypes[] = {
 							{ L"GLSL files", L"*.glsl" },
-							{ L"Any file", L"*" }
+							{ L"Any files", L"*" }
 						};
 
-						std::wstring shaderPath = saveFile(ARRAYSIZE(fileTypes), fileTypes);
+						std::wstring shaderPath = saveFile(ARRAYSIZE(fileTypes), fileTypes, L"main.glsl");
 
 						appLockRequested = TRUE;
 						renderMutex.lock();
@@ -2271,6 +2777,30 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 						appLockRequested = FALSE;
 						renderMutex.unlock();
 					});
+
+					// Display only if at least one input is used
+					InsertMenu(trayMainShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Clear inputs"));
+					trayMenuHandlers.push_back([]() {
+
+						appLockRequested = TRUE;
+						renderMutex.lock();
+						wglMakeCurrent(glDevice, glContext);
+
+						for (int i = 0; i < 4; ++i)
+							unloadMainShaderResource(i);
+
+						wglMakeCurrent(NULL, NULL);
+						appLockRequested = FALSE;
+						renderMutex.unlock();
+					});
+
+					for (int i = 0; i < 4; ++i) {
+						if (scMainShaderInputs[i] != -1)
+							break;
+
+						if (i == 3)
+							EnableMenuItem(trayMainShaderMenu, menuId - 1, MF_DISABLED | MF_GRAYED); // Disabled
+					}
 					
 					for (int inputId = 0; inputId < 4; ++inputId) {
 
@@ -2433,7 +2963,7 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 
 							COMDLG_FILTERSPEC fileTypes[] = {
 								{ L"GLSL files", L"*.glsl" },
-								{ L"Any file", L"*" }
+								{ L"Any files", L"*" }
 							};
 
 							std::wstring shaderPath = openFile(ARRAYSIZE(fileTypes), fileTypes);
@@ -2450,31 +2980,38 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 							renderMutex.unlock();
 						});
 
-						if (glBufferShaderPath[bufferId] != L"") {
-							InsertMenu(trayBufferShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Reload"));
-							trayMenuHandlers.push_back([bufferId]() {
+						InsertMenu(trayBufferShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Reload"));
+						trayMenuHandlers.push_back([bufferId]() {
 
-								appLockRequested = TRUE;
-								renderMutex.lock();
-								wglMakeCurrent(glDevice, glContext);
+							appLockRequested = TRUE;
+							renderMutex.lock();
+							wglMakeCurrent(glDevice, glContext);
 
-								reloadBufferShader(bufferId);
+							reloadBufferShader(bufferId);
 
-								wglMakeCurrent(NULL, NULL);
-								appLockRequested = FALSE;
-								renderMutex.unlock();
-							});
-						}
+							wglMakeCurrent(NULL, NULL);
+							appLockRequested = FALSE;
+							renderMutex.unlock();
+						});
+						if (glBufferShaderPath[bufferId] == L"")
+							EnableMenuItem(trayBufferShaderMenu, menuId - 1, MF_DISABLED | MF_GRAYED); // Disabled
 
 						InsertMenu(trayBufferShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("New"));
 						trayMenuHandlers.push_back([bufferId]() {
 
 							COMDLG_FILTERSPEC fileTypes[] = {
 								{ L"GLSL files", L"*.glsl" },
-								{ L"Any file", L"*" }
+								{ L"Any files", L"*" }
 							};
 
-							std::wstring shaderPath = saveFile(ARRAYSIZE(fileTypes), fileTypes);
+							const wchar_t* fileNames[] = {
+								L"BufferA.glsl",
+								L"BufferB.glsl",
+								L"BufferC.glsl",
+								L"BufferD.glsl"
+							};
+
+							std::wstring shaderPath = saveFile(ARRAYSIZE(fileTypes), fileTypes, fileNames[bufferId]);
 
 							appLockRequested = TRUE;
 							renderMutex.lock();
@@ -2496,20 +3033,44 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 							renderMutex.unlock();
 						});
 						
-						if (glBufferShaderPath[bufferId] != L"") {
-							InsertMenu(trayBufferShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Remove")); // TODO: Change to "Enabled" and "Paused"? because if it is paused, it is not evaluated on each frame and if it is not enabled, it is removed from pack
-							trayMenuHandlers.push_back([bufferId]() {
+						InsertMenu(trayBufferShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Remove")); // TODO: Change to "Enabled" and "Paused"? because if it is paused, it is not evaluated on each frame and if it is not enabled, it is removed from pack
+						trayMenuHandlers.push_back([bufferId]() {
 
-								appLockRequested = TRUE;
-								renderMutex.lock();
-								wglMakeCurrent(glDevice, glContext);
+							appLockRequested = TRUE;
+							renderMutex.lock();
+							wglMakeCurrent(glDevice, glContext);
 
-								unloadBufferShader(bufferId);
+							unloadBufferShader(bufferId);
 
-								wglMakeCurrent(NULL, NULL);
-								appLockRequested = FALSE;
-								renderMutex.unlock();
-							});
+							wglMakeCurrent(NULL, NULL);
+							appLockRequested = FALSE;
+							renderMutex.unlock();
+						});
+						if (glBufferShaderPath[bufferId] == L"")
+							EnableMenuItem(trayBufferShaderMenu, menuId - 1, MF_DISABLED | MF_GRAYED); // Disabled
+
+						// Display only if at least one input is used
+						InsertMenu(trayBufferShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Clear inputs"));
+						trayMenuHandlers.push_back([bufferId]() {
+
+							appLockRequested = TRUE;
+							renderMutex.lock();
+							wglMakeCurrent(glDevice, glContext);
+
+							for (int i = 0; i < 4; ++i)
+								unloadBufferShaderResource(bufferId, i);
+
+							wglMakeCurrent(NULL, NULL);
+							appLockRequested = FALSE;
+							renderMutex.unlock();
+						});
+
+						for (int i = 0; i < 4; ++i) {
+							if (scBufferShaderInputs[bufferId][i] != -1)
+								break;
+							
+							if (i == 3)
+								EnableMenuItem(trayBufferShaderMenu, menuId - 1, MF_DISABLED | MF_GRAYED); // Disabled
 						}
 
 						for (int inputId = 0; inputId < 4; ++inputId) {
@@ -3103,13 +3664,15 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 	
 	// COMDLG_FILTERSPEC fileTypes[] = {
 	// 	{ L"GLSL files", L"*.glsl" },
-	// 	{ L"Any file", L"*" }
+	// 	{ L"Any files", L"*" }
 	// };
 	// // 
 	// std::wcout << saveFile(ARRAYSIZE(fileTypes), fileTypes);
 	// // 
+	// 	std::wcout << std::filesystem::path("../a/b").is_absolute() << std::endl;
+	// 
 	// system("PAUSE");
-	// // 
+	// // // 
 	// return 0;
 
 	// Change output mode to Unicode text
