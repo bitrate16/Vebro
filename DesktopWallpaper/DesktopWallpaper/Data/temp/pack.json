@@ -1,0 +1,27 @@
+{
+    "BufferA": {
+        "inputs": [
+            {
+                "type": "BufferA"
+            },
+            {
+                "path": "C:\\Users\\pegasko\\Documents\\GitHub\\DesktopWallpaper--\\DesktopWallpaper\\DesktopWallpaper\\Data\\shrek\\shrek2.png",
+                "type": "Image"
+            },
+            null,
+            null
+        ],
+        "path": "C:\\Users\\pegasko\\Documents\\GitHub\\DesktopWallpaper--\\DesktopWallpaper\\DesktopWallpaper\\Data\\shrek\\BufferA.glsl"
+    },
+    "Main": {
+        "inputs": [
+            {
+                "type": "BufferA"
+            },
+            null,
+            null,
+            null
+        ],
+        "path": "C:\\Users\\pegasko\\Documents\\GitHub\\DesktopWallpaper--\\DesktopWallpaper\\DesktopWallpaper\\Data\\shrek\\main.glsl"
+    }
+}

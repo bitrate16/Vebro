@@ -1710,7 +1710,6 @@ void savePack() {
 
 
 	// TODO: Relative path for all items
-	W
 
 
 
