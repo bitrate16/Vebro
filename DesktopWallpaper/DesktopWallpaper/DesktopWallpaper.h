@@ -6,7 +6,6 @@
 #include "WorkerWEnumerator.h"
 
 #include "Strings.h"
-#include "DebugDefinitions.h"
 
 
 // Link OpenGL

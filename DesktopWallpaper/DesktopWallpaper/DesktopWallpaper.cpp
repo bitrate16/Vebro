@@ -5,12 +5,8 @@
 #include "framework.h"
 #include "DesktopWallpaper.h"
 
-
-// Globals
-// >> Tray related
-NOTIFYICONDATA trayNID;
-HWND           trayWindow;
-HICON          trayIcon;
+// Debug definisions
+#define DEBUG_DISPLAY_CONSOLE_WINDOW
 
 // Main Tray menu
 // Base disabled items id (Items used only for text display with no function)
@@ -21,21 +17,18 @@ HICON          trayIcon;
 // Separator
 #define IDM_SEP 40000
 
+
+// Globals
+// >> Tray related
+NOTIFYICONDATA trayNID;
+HWND           trayWindow;
+HICON          trayIcon;
+
 // Tray menu object
 HMENU trayMainMenu = 0;
 
 // handlers for functional buttons
 std::vector<std::function<void()>> trayMenuHandlers;
-// // Tray menu for FPS selection
-// HMENU trayFPSSelectMenu = 0;
-// // Tray menu sound source selection
-// HMENU traySoundSourceMenu = 0;
-// // Tray menu Main shader config
-// HMENU trayMainShaderMenu = 0;
-// // Tray menu buffer shader config
-// HMENU trayBufferShaderMenu[4] = { 0, 0, 0, 0 };
-// // Tray menu input type selection
-// HMENU trayMainInputTypeMenu = 0;
 
 
 // >> Displays related
@@ -132,7 +125,7 @@ BOOL         appLockRequested = FALSE; // indicates if main thread wants to acqu
 // Audio : path, GLuint bind (current FFT as texture), specific media data
 // Webcam : GLuint bind (current frame as texture)
 // Microphone : GLuint (current FFT as texture)
-// TODO: Keyboard Input, Cubemap input
+// TODO: Cubemap input
 enum ResourceType {
 	IMAGE_TEXTURE,    // Simple image as input
 	AUDIO_TEXTURE,    // Audio file as input
@@ -367,7 +360,7 @@ int loadResource(SCResource res) {
 		case FRAME_BUFFER: {
 			res.refs = 1;
 
-			// TODO: Check if chader is in main rendering chain
+			// TODO: TRUE this frag only if the shader is used in chain of rendering main shader
 			glBufferShaderShouldBeRendered[res.buffer_id] = TRUE;
 
 			std::wcout << "Inserting resource for Buffer " << res.buffer_id << std::endl;
@@ -764,16 +757,6 @@ std::wstring saveFile(int fileTypesSize, const COMDLG_FILTERSPEC* fileTypes, con
 	return result;
 }
 
-// TODO:
-// System sound source picker
-// Audio input using FFT and texture
-// Image textures
-// Video textures
-// Mouse clicks
-// Buffer rendering
-// Json-like format for storing shaders
-// Direct download from shadertoy.com
-
 
 struct ShaderCompilationStatus {
 	GLuint shaderID = -1;
@@ -782,7 +765,8 @@ struct ShaderCompilationStatus {
 
 // Compiles fragment shader and returns shader program ID
 // Debug only
-ShaderCompilationStatus compileShader(const char* fragmentSource) { // const std::wstring& fragmentSource
+// shaderName defines the name of the shader to display if error occurs. For example BufferA or myshader.glsl
+ShaderCompilationStatus compileShader(const char* fragmentSource, const char* shaderName = NULL) { // const std::wstring& fragmentSource
 
 	// Default Vertex shader
 	const char* vertexSource = R"glsl(
@@ -806,7 +790,7 @@ ShaderCompilationStatus compileShader(const char* fragmentSource) { // const std
 	if (status != GL_TRUE) {
 
 		// TODO: std::vector<char> or std::string buffer
-		char buffer[4096];
+		char buffer[2048];
 		glGetShaderInfoLog(vertexShader, 4096, NULL, buffer);
 
 		std::wcout << "Vertex shader compilation error: " << buffer << std::endl;
@@ -823,9 +807,6 @@ ShaderCompilationStatus compileShader(const char* fragmentSource) { // const std
 	// Compile Fragment shader
 	GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
 
-	// std::string fragmentSourceString = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(fragmentSource);
-	// const char* fragmentSourceC = fragmentSourceString.c_str();
-	// glShaderSource(fragmentShader, 1, &fragmentSourceC, NULL);
 	glShaderSource(fragmentShader, 1, &fragmentSource, NULL);
 	glCompileShader(fragmentShader);
 
@@ -835,14 +816,17 @@ ShaderCompilationStatus compileShader(const char* fragmentSource) { // const std
 	if (status != GL_TRUE) {
 
 		// TODO: std::vector<char> or std::string buffer
-		char buffer[4096];
+		char buffer[8192];
 		glGetShaderInfoLog(fragmentShader, 4096, NULL, buffer);
 
-		std::wcout << "Fragment shader compilation error: " << buffer << std::endl;
+		if (shaderName == NULL)
+			std::wcout << "Fragment shader compilation error: " << buffer << std::endl;
+		else
+			std::wcout << "Fragment shader " << shaderName << " compilation error: " << buffer << std::endl;
 		MessageBoxA(
 			NULL,
 			buffer,
-			"Fragment shader compilation error",
+			shaderName == NULL ? "Fragment shader compilation error" : ("Fragment shader " + std::string(shaderName) + " compilation error").c_str(),
 			MB_ICONERROR | MB_OK
 		);
 
@@ -885,7 +869,7 @@ ShaderCompilationStatus compileShaderFromFile(const std::wstring& path) {
 
 	str.assign((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
 
-	return compileShader(str.c_str());
+	return compileShader(str.c_str(), std::filesystem::path(path).filename().string().c_str());
 }
 
 // Loads Main shader from file, saves path
@@ -1703,20 +1687,12 @@ void savePack() {
 		return;
 	}
 
+	std::filesystem::path basePackPath = std::filesystem::path(std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(scPackPath)).parent_path();
+	
 	nlohmann::json j;
 
-
-
-
-
-	// TODO: Relative path for all items
-	W
-
-
-
-
-
-	j["Main"]["path"] = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(glMainShaderPath);
+	j["Main"]["path"] = std::filesystem::relative(std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(glMainShaderPath), basePackPath).string();
+	
 	j["Main"]["inputs"] = nlohmann::json::array();
 
 	for (int i = 0; i < 4; ++i) {
@@ -1729,11 +1705,11 @@ void savePack() {
 				switch (scResources[scMainShaderInputs[i]].resource.type) {
 					case IMAGE_TEXTURE: {
 						j["Main"]["inputs"][i]["type"] = "Image";
-						j["Main"]["inputs"][i]["path"] = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(scResources[scMainShaderInputs[i]].resource.path);
+						j["Main"]["inputs"][i]["path"] = std::filesystem::relative(std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(scResources[scMainShaderInputs[i]].resource.path), basePackPath).string();
 						break;
 					}
 
-					case AUDIO_TEXTURE: { // TODO: Reload media resources
+					case AUDIO_TEXTURE: { // TODO: Save media resources
 						std::wcout << "To JSON :: Main Shader :: Incomplete :: Audio" << std::endl;
 						break;
 					}
@@ -1774,7 +1750,7 @@ void savePack() {
 		if (glBufferShaderPath[k] == L"")
 			continue;
 
-		j[bufferKey]["path"] = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(glBufferShaderPath[k]);
+		j[bufferKey]["path"] = std::filesystem::relative(std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(glBufferShaderPath[k]), basePackPath).string();
 		j[bufferKey]["inputs"] = nlohmann::json::array();
 
 		for (int i = 0; i < 4; ++i) {
@@ -1787,11 +1763,11 @@ void savePack() {
 					switch (scResources[scBufferShaderInputs[k][i]].resource.type) {
 						case IMAGE_TEXTURE: {
 							j[bufferKey]["inputs"][i]["type"] = "Image";
-							j[bufferKey]["inputs"][i]["path"] = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(scResources[scBufferShaderInputs[k][i]].resource.path);
+							j[bufferKey]["inputs"][i]["path"] = std::filesystem::relative(std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(scResources[scBufferShaderInputs[k][i]].resource.path), basePackPath).string();
 							break;
 						}
 
-						case AUDIO_TEXTURE: { // TODO: Reload media resources
+						case AUDIO_TEXTURE: { // TODO: Save media resources
 							std::wcout << "To JSON :: Buffer " << ("ABCD"[k]) << " Shader :: Incomplete :: Audio" << std::endl;
 							break;
 						}
@@ -1842,47 +1818,8 @@ void savePack() {
 	}
 	out << j.dump(4);
 	out.close();
-
-	// WHY???
-	//// Save Main Shader file
-	//std::ofstream out1(glMainShaderPath.c_str());
-	//if (!out1) {
-	//	std::wcout << "To JSON :: Failed to create Main Shader file :: " << glMainShaderPath << std::endl;
-	//
-	//	MessageBox(
-	//		NULL,
-	//		(L"Failed to create Main Shader file " + glMainShaderPath).c_str(),
-	//		L"Failed to create file",
-	//		MB_ICONERROR | MB_OK
-	//	);
-	//
-	//	return;
-	//}
-	//out1 << j;
-	//out1.close();
-	//
-	//// Save Buffer Shader files
-	//for (int i = 0; i < 4; ++i) {
-	//	if (glBufferShaderPath[i] == L"")
-	//		continue;
-	//
-	//	std::ofstream out2(glBufferShaderPath[i].c_str());
-	//	if (!out2) {
-	//		std::wcout << "To JSON :: Failed to create Buffer " << ("ABCD"[i]) << " Shader file :: " << glBufferShaderPath[i] << std::endl;
-	//
-	//		MessageBox(
-	//			NULL,
-	//			(std::wstring(L"Failed to create Buffer ") + (L"ABCD"[i]) + L" Shader file " + glBufferShaderPath[i]).c_str(),
-	//			L"Failed to create file",
-	//			MB_ICONERROR | MB_OK
-	//		);
-	//
-	//		return;
-	//	}
-	//	out2 << j;
-	//	out2.close();
-	//}
 }
+
 
 // Initialize the OpenGL scene
 void initSC() {
@@ -2006,12 +1943,8 @@ void resizeSC() {
 
 // Render single frame of the Scene
 void renderSC() {
+
 	if (glMainShaderProgramID != -1) {
-		// TODO:
-		// 1. Evaluate all inputs 
-		// 2. Save buffers as textures
-		// 3. Render all buffers
-		// 4. Render scene
 
 		if (!scPaused) {
 
@@ -2030,7 +1963,6 @@ void renderSC() {
 			// uniform vec3      iChannelResolution[4]; // channel resolution (in pixels)
 			// uniform samplerXX iChannel0..3;          // input channel. XX = 2D/Cube
 			// 
-			// TODO: Deprecated (Always 0 yet):
 			// uniform float     iSampleRate;           // sound sample rate (i.e., 44100)
 
 			// Basic values:
@@ -2135,8 +2067,6 @@ void renderSC() {
 					glUniform1f(glGetUniformLocation(glBufferShaderProgramIDs[i], "iTimeDelta"), (float) (glfwGetTime() - scTimestamp));
 					glUniform1i(glGetUniformLocation(glBufferShaderProgramIDs[i], "iFrame"), scFrames); // TODO: Should we pass actual buffer frames or global scFrames is enough?
 
-					// imouse.xy = current mouse location
-					// iMouse.zw = previous mouse location
 					// TODO: Validate iMouse.zw data
 					if (scMouseEnabled) 
 						glUniform4f(glGetUniformLocation(glBufferShaderProgramIDs[i], "iMouse"), (GLfloat) currentMouse.x, (GLfloat) currentMouse.y, (GLfloat) scMouse.x, (GLfloat) scMouse.y);
@@ -2146,7 +2076,7 @@ void renderSC() {
 					glUniform4f(glGetUniformLocation(glBufferShaderProgramIDs[i], "iDate"), (GLfloat) iDate_year, (GLfloat) iDate_month, (GLfloat) iDate_day, (GLfloat) iDate_time);
 
 					// Default value for SampleRate
-					// TODO: Should evaluate from inputs?
+					// TODO: Should evaluate from inputs
 					glUniform1f(glGetUniformLocation(glBufferShaderProgramIDs[i], "iSampleRate"), 0);
 
 					// Bind iChannel data
@@ -2170,8 +2100,7 @@ void renderSC() {
 							case IMAGE_TEXTURE: {
 
 								// Bind texture
-								// TODO: In parallel rendering use different CL_TEXTURE* to avoid data intersection
-								// TODO: Support for Sampler3D, e.t.c.
+								// TODO: Support for Sampler3D (requires shader recompile), e.t.c.
 								glActiveTexture(GL_TEXTURE5 + i * 4 + k);
 								glBindTexture(GL_TEXTURE_2D, scResources[scBufferShaderInputs[i][k]].resource.bind);
 								glUniform1i(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelUniforms[k]), 5 + i * 4 + k);
@@ -2218,8 +2147,6 @@ void renderSC() {
 							case FRAME_BUFFER: { // Buffer size always match the viewport size
 								
 								// Bind texture
-								// TODO: In parallel rendering use different CL_TEXTURE* to avoid data intersection
-								// TODO: Support for Sampler3D, e.t.c.
 								glActiveTexture(GL_TEXTURE5 + i * 4 + k);
 								glBindTexture(GL_TEXTURE_2D, glBufferShaderFramebufferTextures[scBufferFrames[scResources[scBufferShaderInputs[i][k]].resource.buffer_id] % 2][scResources[scBufferShaderInputs[i][k]].resource.buffer_id]);
 								glUniform1i(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelUniforms[k]), 5 + i * 4 + k);
@@ -2258,8 +2185,6 @@ void renderSC() {
 			glUniform1f(glGetUniformLocation(glMainShaderProgramID, "iTimeDelta"), (float) (glfwGetTime() - scTimestamp));
 			glUniform1i(glGetUniformLocation(glMainShaderProgramID, "iFrame"), scFrames);
 
-			// imouse.xy = current mouse location
-			// iMouse.zw = previous mouse location
 			// TODO: Validate iMouse.zw data
 			if (scMouseEnabled)
 				glUniform4f(glGetUniformLocation(glMainShaderProgramID, "iMouse"), (GLfloat) currentMouse.x, (GLfloat) currentMouse.y, (GLfloat) scMouse.x, (GLfloat) scMouse.y);
@@ -2269,7 +2194,7 @@ void renderSC() {
 			glUniform4f(glGetUniformLocation(glMainShaderProgramID, "iDate"), (GLfloat) iDate_year, (GLfloat) iDate_month, (GLfloat) iDate_day, (GLfloat) iDate_time);
 
 			// Default value for SampleRate
-			// TODO: Should evaluate from inputs?
+			// TODO: Should evaluate from inputs
 			glUniform1f(glGetUniformLocation(glMainShaderProgramID, "iSampleRate"), 0);
 
 			// Bind iChannel data
@@ -2293,8 +2218,7 @@ void renderSC() {
 					case IMAGE_TEXTURE: {
 
 						// Bind texture
-						// TODO: In parallel rendering use different CL_TEXTURE* to avoid data intersection
-						// TODO: Support for Sampler3D, e.t.c.
+						// TODO: Support for Sampler3D (requires shader recompile), e.t.c.
 						glActiveTexture(GL_TEXTURE1 + k);
 						glBindTexture(GL_TEXTURE_2D, scResources[scMainShaderInputs[k]].resource.bind);
 						glUniform1i(glGetUniformLocation(glMainShaderProgramID, iChannelUniforms[k]), 1 + k);
@@ -2341,8 +2265,6 @@ void renderSC() {
 					case FRAME_BUFFER: { // Buffer size always match the viewport size
 
 						// Bind texture
-						// TODO: In parallel rendering use different CL_TEXTURE* to avoid data intersection
-						// TODO: Support for Sampler3D, e.t.c.
 						glActiveTexture(GL_TEXTURE1 + k);
 						glBindTexture(GL_TEXTURE_2D, glBufferShaderFramebufferTextures[scBufferFrames[scResources[scMainShaderInputs[k]].resource.buffer_id] % 2][scResources[scMainShaderInputs[k]].resource.buffer_id]);
 						glUniform1i(glGetUniformLocation(glMainShaderProgramID, iChannelUniforms[k]), 1 + k);
@@ -2570,7 +2492,8 @@ void enumerateDisplays() {
 
 
 // Tray window event dispatcher
-LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) { // TODO: Accelerators &
+// TODO: Accelerators &
+LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) { 
 
 	// Event specific info
 	int wmId, wmEvent;
@@ -3512,8 +3435,11 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 					}
 
 					// Insert this menu, yes
-					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainShaderMenu, _T("Main shader"));
-
+					if (glMainShaderPath != L"")
+						InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainShaderMenu, (L"Main shader: " + std::filesystem::path(glMainShaderPath).filename().wstring()).c_str());
+					else
+						InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayMainShaderMenu, L"Main shader");
+					
 					// Create menu for each Buffer Shader
 					for (int bufferId = 0; bufferId < 4; ++bufferId) {
 						
@@ -3810,14 +3736,24 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 						}
 
 						const wchar_t* menuEntry[4] = {
-							L"Buffer A shader",
-							L"Buffer B shader",
-							L"Buffer C shader",
-							L"Buffer D shader"
+							L"Buffer A Shader",
+							L"Buffer B Shader",
+							L"Buffer C Shader",
+							L"Buffer D Shader"
+						};
+
+						const wchar_t* menuEntryColon[4] = {
+							L"Buffer A Shader: ",
+							L"Buffer B Shader: ",
+							L"Buffer C Shader: ",
+							L"Buffer D Shader: "
 						};
 
 						// Insert that menu, no
-						InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayBufferShaderMenu, menuEntry[bufferId]);
+						if (glBufferShaderPath[bufferId] != L"")
+							InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayBufferShaderMenu, (menuEntryColon[bufferId] + std::filesystem::path(glBufferShaderPath[bufferId]).filename().wstring()).c_str());
+						else
+							InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayBufferShaderMenu, menuEntry[bufferId]);
 					}
 
 					//
@@ -4153,116 +4089,31 @@ void enterDispatchLoop() {
 	}
 }
 
-/*
-HRESULT pickFile(wchar_t* extensions) {
 
-	IFileDialog* pfd = NULL;
-	HRESULT hr = CoCreateInstance(CLSID_FileOpenDialog,
-		NULL,
-		CLSCTX_INPROC_SERVER,
-		IID_PPV_ARGS(&pfd));
-
-	if (SUCCEEDED(hr)) {
-
-		IFileDialogEvents* pfde = NULL;
-		hr = CDialogEventHandler_CreateInstance(IID_PPV_ARGS(&pfde));
-
-		if (SUCCEEDED(hr)) {
-
-			DWORD dwCookie;
-			hr = pfd->Advise(pfde, &dwCookie);
-
-			if (SUCCEEDED(hr)) {
-
-				DWORD dwFlags;
-				hr = pfd->GetOptions(&dwFlags);
-
-				if (SUCCEEDED(hr)) {
-
-					hr = pfd->SetOptions(dwFlags | FOS_FORCEFILESYSTEM);
-
-					if (SUCCEEDED(hr)) {
-
-						hr = pfd->SetFileTypes(ARRAYSIZE(c_rgSaveTypes), c_rgSaveTypes);
-
-						if (SUCCEEDED(hr)) {
-
-							hr = pfd->SetFileTypeIndex(INDEX_WORDDOC);
-
-							if (SUCCEEDED(hr)) {
-
-								hr = pfd->SetDefaultExtension(extensions);
-
-								if (SUCCEEDED(hr)) {
-
-									hr = pfd->Show(NULL);
-
-									if (SUCCEEDED(hr)) {
-
-										IShellItem* psiResult;
-										hr = pfd->GetResult(&psiResult);
-
-										if (SUCCEEDED(hr)) {
-
-											PWSTR pszFilePath = NULL;
-											hr = psiResult->GetDisplayName(SIGDN_FILESYSPATH, &pszFilePath);
-
-											if (SUCCEEDED(hr))
-											{
-												TaskDialog(NULL,
-													NULL,
-													L"CommonFileDialogApp",
-													pszFilePath,
-													NULL,
-													TDCBF_OK_BUTTON,
-													TD_INFORMATION_ICON,
-													NULL);
-												CoTaskMemFree(pszFilePath);
-											}
-											psiResult->Release();
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-				pfd->Unadvise(dwCookie);
-			}
-			pfde->Release();
-		}
-		pfd->Release();
+// Command line options parsing
+// https://stackoverflow.com/a/868894
+wchar_t* getCmdOption(wchar_t** begin, wchar_t** end, const std::wstring& option) {
+	wchar_t** itr = std::find(begin, end, option);
+	if (itr != end && ++itr != end) {
+		return *itr;
 	}
-	return hr;
+	return 0;
 }
-*/
+
+bool cmdOptionExists(wchar_t** begin, wchar_t** end, const std::wstring& option) {
+	return std::find(begin, end, option) != end;
+}
+
 
 // Entry
 int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ PWSTR pCmdLine, _In_ int nCmdShow) {
 
-	//UNREFERENCED_PARAMETER(hPrevInstance);
-	//UNREFERENCED_PARAMETER(pCmdLine);
-
-	// Debug: Display console window
 #ifdef DEBUG_DISPLAY_CONSOLE_WINDOW
-	// TODO: Commandline parameter to open with console
-	// TODO: Prevent console closing exiting app https://stackoverflow.com/questions/20232685/how-can-i-prevent-my-program-from-closing-when-a-open-console-window-is-closed
-		AllocConsole();
-		FILE* reo = freopen("CONOUT$", "w+", stdout);
+	AllocConsole();
+	SetConsoleTitle(L"Debug output");
+	SetConsoleCtrlHandler(NULL, TRUE);
+	FILE* _frp = freopen("CONOUT$", "w", stdout);
 #endif
-	
-	// COMDLG_FILTERSPEC fileTypes[] = {
-	// 	{ L"GLSL files", L"*.glsl" },
-	// 	{ L"Any files", L"*" }
-	// };
-	// // 
-	// std::wcout << saveFile(ARRAYSIZE(fileTypes), fileTypes);
-	// // 
-	// 	std::wcout << std::filesystem::path("../a/b").is_absolute() << std::endl;
-	// 
-	// system("PAUSE");
-	// // // 
-	// return 0;
 
 	// Change output mode to Unicode text
 	int _sm = _setmode(_fileno(stdout), _O_U16TEXT);
@@ -4288,54 +4139,6 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 
 	ShowWindow(glWindow, nCmdShow);
 	UpdateWindow(glWindow);
-
-	// DEBUG: Load sample shader and run
-#ifdef DEBUG_LOAD_SHADER_FROM_FILE
-
-	// Flags force override
-	wndDebugOutput = TRUE;
-	scMouseEnabled = TRUE;
-	// scPaused = TRUE;
-
-
-	// Resources & shaders
-
-	SCResource input_main_0;
-	input_main_0.type = FRAME_BUFFER;
-	input_main_0.buffer_id = 0;
-
-	loadMainShaderFromFile(L"Data/sandbox0.glsl");
-	loadMainShaderResource(input_main_0, 0); // Buffer A
-
-	SCResource input_B_0;
-	input_B_0.type = FRAME_BUFFER;
-	input_B_0.buffer_id = 0;
-
-	SCResource input_B_1;
-	input_B_1.type = IMAGE_TEXTURE;
-	input_B_1.path = std::filesystem::absolute("Data/shrek2.png").wstring();
-
-	loadBufferShaderFromFile(L"Data/sandbox2.glsl", 0);
-	loadBufferShaderResource(input_B_0, 0, 0); // Buffer A
-	loadBufferShaderResource(input_B_1, 0, 1); // shrek2.png
-
-
-	// Move to second display
-	currentWindowDimensions = displays[scDisplayID = 1];
-	MoveWindow(glWindow, currentWindowDimensions.left, currentWindowDimensions.top, currentWindowDimensions.right - currentWindowDimensions.left, currentWindowDimensions.bottom - currentWindowDimensions.top, TRUE);
-	glWidth = currentWindowDimensions.right - currentWindowDimensions.left;
-	glHeight = currentWindowDimensions.bottom - currentWindowDimensions.top;
-
-
-	//ShaderCompilationStatus compilationStatus = compileShaderFromFile("shader.glsl"); // compileShader(defaultShader); // compileShaderFromFile("shader.glsl");
-	//
-	//if (!compilationStatus.success) {
-	//	std::wcout << "You're debugging the thing that doesn't work" << std::endl;
-	//	system("PAUSE");
-	//}  else
-	//	glMainShaderProgramID = compilationStatus.shaderID;
-
-#endif
 
 	// Release OpenGL context for this thread
 	wglMakeCurrent(NULL, NULL);

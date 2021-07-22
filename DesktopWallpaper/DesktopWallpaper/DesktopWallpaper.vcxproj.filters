@@ -33,12 +33,6 @@
     <ClInclude Include="WorkerWEnumerator.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="TrayMenuItems.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="DebugDefinitions.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="DesktopWallpaper.cpp">
