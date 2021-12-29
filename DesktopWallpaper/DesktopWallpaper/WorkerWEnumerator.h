@@ -16,15 +16,15 @@ namespace WorkerWEnumerator {
 			wchar_t windowTitle[255];
 			GetWindowText(hWnd, (LPWSTR)windowTitle, 254);
 
-			std::wcout << std::wstring(enumLevel * 2, ' ');
+			// std::wcout << std::wstring(enumLevel * 2, ' ');
 
-			std::wstringstream stream;
-			stream << "0x" << std::hex << std::setw(8) << std::setfill(L'0') << std::uppercase << (INT64)hWnd << std::nouppercase << std::dec;
-			std::wstring result(stream.str());
+			// std::wstringstream stream;
+			// stream << "0x" << std::hex << std::setw(8) << std::setfill(L'0') << std::uppercase << (INT64)hWnd << std::nouppercase << std::dec;
+			// std::wstring result(stream.str());
 
-			std::wcout << result;
-			std::wcout << " \"" << windowTitle << "\" " << className << std::endl;
-			std::wcout << std::flush;
+			// std::wcout << result;
+			// std::wcout << " \"" << windowTitle << "\" " << className << std::endl;
+			// std::wcout << std::flush;
 
 			enumLevel++;
 			EnumChildWindows(hWnd, (WNDENUMPROC) EnumWindowsPrint, 0);

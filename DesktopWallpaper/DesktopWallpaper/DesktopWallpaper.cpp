@@ -2301,6 +2301,9 @@ void renderSC() {
 			scMouse.x = currentMouse.x;
 			scMouse.y = currentMouse.y;
 		}
+	} else {
+		// TODO: Repaint desktop one time after shader switch off
+		repaintDesktop();
 	}
 }
 
@@ -2405,6 +2408,19 @@ void dispose() {
 		DestroyMenu(trayMainMenu);
 }
 
+// Used to rapaint desktop window to prevent artifacts
+void repaintDesktop() {
+	// Locate WorkerW
+	HWND workerw = WorkerWEnumerator::enumerateForWorkerW();
+
+	if (workerw == NULL) {
+		std::wcout << "WorkerW enumeration failed" << std::endl;
+		return 1;
+	}
+
+	RedrawWindow(workerw, NULL, NULL, RDW_INVALIDATE);
+}
+
 
 // Carefull stop application with dispose of all resources, threads and exit
 void exitApp() {
@@ -2432,6 +2448,9 @@ void exitApp() {
 
 	if (glPalette)
 		DeleteObject(glPalette);
+
+	// Repaint desktop window
+	repaintDesktop();
 }
 
 
@@ -4114,6 +4133,24 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 	SetConsoleCtrlHandler(NULL, TRUE);
 	FILE* _frp = freopen("CONOUT$", "w", stdout);
 #endif
+
+	// Parse commandline options
+	if (cmdOptionExists(__wargv, __wargv + __argc, L"-h")) {
+		std::wcout << "help for commandline options (use separately)" << std::endl;
+		std::wcout << " -h          display help" << std::endl;
+		std::wcout << " -d          enable debug output" << std::endl;
+		std::wcout << " -f          enable fullscreen mode" << std::endl;
+		std::wcout << " -d <number> defines default display number starting from 0" << std::endl;
+		std::wcout << " -m          enable mouse input" << std::endl;
+		std::wcout << " -s          enable sound input" << std::endl;
+		std::wcout << " -i <number> defines default sound source number starting from 0" << std::endl;
+
+		system("PAUSE");
+
+		return 0;
+	}
+
+	enable debug console not printing output
 
 	// Change output mode to Unicode text
 	int _sm = _setmode(_fileno(stdout), _O_U16TEXT);
