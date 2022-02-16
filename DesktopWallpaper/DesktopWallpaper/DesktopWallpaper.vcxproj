@@ -24,6 +24,7 @@
     <ProjectGuid>{64b00c28-56aa-44e6-9761-992a02f8734d}</ProjectGuid>
     <RootNamespace>DesktopWallpaper</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <ProjectName>DesktopWallpaper</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">

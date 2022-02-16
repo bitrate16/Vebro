@@ -188,7 +188,7 @@ ResourceTableEntry scResources[ResourceTableSize];
 
 // Finds the specified resource and returns it's ID on success
 int findResource(SCResource res) {
-	for (size_t i = 0; i < ResourceTableSize; ++i) {
+	for (int i = 0; i < ResourceTableSize; ++i) {
 		if (scResources[i].empty)
 			continue;
 
@@ -560,7 +560,7 @@ BOOL reloadResources() {
 
 // Unloads all resources
 void unloadResources() {
-	for (size_t i = 0; i < ResourceTableSize; ++i) {
+	for (int i = 0; i < ResourceTableSize; ++i) {
 		if (scResources[i].empty)
 			continue;
 
@@ -652,6 +652,8 @@ BOOL unloadBufferShaderResource(int bufferID, int inputID) {
 		unloadResource(scBufferShaderInputs[bufferID][inputID]);
 		scBufferShaderInputs[bufferID][inputID] = -1;
 	}
+
+	return 0;
 }
 
 
@@ -1821,6 +1823,19 @@ void savePack() {
 }
 
 
+// Used to rapaint desktop window to prevent artifacts
+void repaintDesktop() {
+	// Locate WorkerW
+	HWND workerw = WorkerWEnumerator::enumerateForWorkerW();
+
+	if (workerw == NULL) {
+		std::wcout << "WorkerW enumeration failed" << std::endl;
+		return;
+	}
+
+	RedrawWindow(workerw, NULL, NULL, RDW_INVALIDATE);
+}
+
 // Initialize the OpenGL scene
 void initSC() {
 
@@ -2301,9 +2316,6 @@ void renderSC() {
 			scMouse.x = currentMouse.x;
 			scMouse.y = currentMouse.y;
 		}
-	} else {
-		// TODO: Repaint desktop one time after shader switch off
-		repaintDesktop();
 	}
 }
 
@@ -2406,19 +2418,6 @@ void dispose() {
 
 	if (trayMainMenu != 0)
 		DestroyMenu(trayMainMenu);
-}
-
-// Used to rapaint desktop window to prevent artifacts
-void repaintDesktop() {
-	// Locate WorkerW
-	HWND workerw = WorkerWEnumerator::enumerateForWorkerW();
-
-	if (workerw == NULL) {
-		std::wcout << "WorkerW enumeration failed" << std::endl;
-		return 1;
-	}
-
-	RedrawWindow(workerw, NULL, NULL, RDW_INVALIDATE);
 }
 
 
@@ -2570,7 +2569,7 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 								appLockRequested = FALSE;
 								renderMutex.unlock();
 
-								return TRUE;
+								return;
 							}
 
 							// Ensure no out of bounds, loop displays
@@ -2592,6 +2591,9 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 
 							// Update flag (obviously)
 							scFullscreen = FALSE;
+
+							// Request repaint after display changed
+							repaintDesktop();
 
 							appLockRequested = FALSE;
 							renderMutex.unlock();
@@ -2627,12 +2629,12 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 								appLockRequested = FALSE;
 								renderMutex.unlock();
 
-								return TRUE;
+								return;
 							}
 
 							// Ensure no out of bounds
 							if (scDisplayID >= displays.size())
-								scDisplayID = displays.size() - 1;
+								scDisplayID = (int) displays.size() - 1;
 
 							currentWindowDimensions = displays[scDisplayID];
 
@@ -2669,7 +2671,7 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 								appLockRequested = FALSE;
 								renderMutex.unlock();
 
-								return TRUE;
+								return;
 							}
 
 							currentWindowDimensions = fullViewportSize;
@@ -2688,6 +2690,9 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 							// Update flag (obviously)
 							scFullscreen = TRUE;
 						}
+
+						// Request repaint after display changed
+						repaintDesktop();
 
 						appLockRequested = FALSE;
 						renderMutex.unlock();
@@ -2719,7 +2724,7 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 							appLockRequested = FALSE;
 							renderMutex.unlock();
 
-							return TRUE;
+							return;
 						}
 
 						if (scFullscreen) {
@@ -3946,7 +3951,13 @@ int createDesktopWindow(_In_ HINSTANCE hInstance) {
 
 	// Initial display enumeration
 	enumerateDisplays();
-	currentWindowDimensions = displays[0];
+
+	// Set single display or fullscreen
+	if (!scFullscreen) {
+		currentWindowDimensions = displays[scDisplayID];
+	} else {
+		currentWindowDimensions = fullViewportSize;
+	}
 
 	// Creating Window for OpenGL context
 	WNDCLASS wc;
@@ -4111,10 +4122,11 @@ void enterDispatchLoop() {
 
 // Command line options parsing
 // https://stackoverflow.com/a/868894
-wchar_t* getCmdOption(wchar_t** begin, wchar_t** end, const std::wstring& option) {
+// Modified: returns index of arguemnt or 0 (zero argument is always program name)
+size_t getCmdOption(wchar_t** begin, wchar_t** end, const std::wstring& option) {
 	wchar_t** itr = std::find(begin, end, option);
 	if (itr != end && ++itr != end) {
-		return *itr;
+		return itr - begin;
 	}
 	return 0;
 }
@@ -4135,22 +4147,138 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 #endif
 
 	// Parse commandline options
-	if (cmdOptionExists(__wargv, __wargv + __argc, L"-h")) {
+	if (cmdOptionExists(__wargv, __wargv + __argc, L"-h") || cmdOptionExists(__wargv, __wargv + __argc, L"--help")) {
 		std::wcout << "help for commandline options (use separately)" << std::endl;
-		std::wcout << " -h          display help" << std::endl;
-		std::wcout << " -d          enable debug output" << std::endl;
-		std::wcout << " -f          enable fullscreen mode" << std::endl;
-		std::wcout << " -d <number> defines default display number starting from 0" << std::endl;
-		std::wcout << " -m          enable mouse input" << std::endl;
-		std::wcout << " -s          enable sound input" << std::endl;
-		std::wcout << " -i <number> defines default sound source number starting from 0" << std::endl;
+		std::wcout << " -h, --help         display help" << std::endl;
 
+		// Display properties
+		std::wcout << " --display <id>     default display ID (>= 0)" << std::endl;
+		std::wcout << " --fullscreen       enable fullscreen mode" << std::endl; // Overwrite displayID
+
+		// FPS properties
+		std::wcout << " --fps <fps>        set fps (1-240)" << std::endl;
+
+		// Input properties
+		std::wcout << " --mouse            enable mouse input" << std::endl;
+
+		// Pack selection
+		std::wcout << " --pack             pack json location" << std::endl;
+
+		// Shader properties (Override pack)
+		std::wcout << " --main             main shader location" << std::endl;
+		std::wcout << " --main:0           main shader Input 0 (type:path), exmaple: image:shrek.png" << std::endl;
+		std::wcout << " --main:1           main shader Input 1 (type:path)" << std::endl;
+		std::wcout << " --main:2           main shader Input 2 (type:path)" << std::endl;
+		std::wcout << " --main:3           main shader Input 3 (type:path)" << std::endl;
+
+		std::wcout << " --a                Buffer A shader location" << std::endl;
+		std::wcout << " --a:0              Buffer A Input 0 (type:path)" << std::endl;
+		std::wcout << " --a:1              Buffer A Input 1 (type:path)" << std::endl;
+		std::wcout << " --a:2              Buffer A Input 2 (type:path)" << std::endl;
+		std::wcout << " --a:3              Buffer A Input 3 (type:path)" << std::endl;
+
+		std::wcout << " --b                Buffer B shader location" << std::endl;
+		std::wcout << " --b:0              Buffer B Input 0 (type:path)" << std::endl;
+		std::wcout << " --b:1              Buffer B Input 1 (type:path)" << std::endl;
+		std::wcout << " --b:2              Buffer B Input 2 (type:path)" << std::endl;
+		std::wcout << " --b:3              Buffer B Input 3 (type:path)" << std::endl;
+
+		std::wcout << " --c                Buffer C shader location" << std::endl;
+		std::wcout << " --c:0              Buffer C Input 0 (type:path)" << std::endl;
+		std::wcout << " --c:1              Buffer C Input 1 (type:path)" << std::endl;
+		std::wcout << " --c:2              Buffer C Input 2 (type:path)" << std::endl;
+		std::wcout << " --c:3              Buffer C Input 3 (type:path)" << std::endl;
+
+		std::wcout << " --d                Buffer D shader location" << std::endl;
+		std::wcout << " --d:0              Buffer D Input 0 (type:path)" << std::endl;
+		std::wcout << " --d:1              Buffer D Input 1 (type:path)" << std::endl;
+		std::wcout << " --d:2              Buffer D Input 2 (type:path)" << std::endl;
+		std::wcout << " --d:3              Buffer D Input 3 (type:path)" << std::endl;
+
+		// Debug properties
+		std::wcout << " --debug            enable debug output" << std::endl;
+
+		// DEBUG:
 		system("PAUSE");
 
 		return 0;
 	}
 
-	enable debug console not printing output
+	bool useDebugConsole = cmdOptionExists(__wargv, __wargv + __argc, L"--debug");
+
+	// Open console first for errors tracking
+	if (useDebugConsole) {
+		AllocConsole();
+		SetConsoleTitle(L"Debug output");
+		SetConsoleCtrlHandler(NULL, TRUE);
+		FILE* _frp = freopen("CONOUT$", "w", stdout);
+	}
+
+	// Index of argument
+	size_t argi = 0;
+
+	// Display ID
+	if (argi = getCmdOption(__wargv, __wargv + __argc, L"--display")) {
+		if (argi + 1 >= __argc) {
+			std::wcout << "Expected displayID argument" << std::endl;
+
+			if (useDebugConsole)
+				system("PAUSE");
+
+			exit(0);
+		}
+
+		try {
+			scDisplayID = std::stoi(__wargv[argi + 1]);
+		} catch (...) {
+			std::wcout << "Expected displayID argument" << std::endl;
+
+			if (useDebugConsole)
+				system("PAUSE");
+
+			exit(0);
+		}
+	}
+
+	// Fullscreen
+	scFullscreen = cmdOptionExists(__wargv, __wargv + __argc, L"--fullscreen");
+
+	// FPS
+	if (argi = getCmdOption(__wargv, __wargv + __argc, L"--fps")) {
+		if (argi + 1 >= __argc) {
+			std::wcout << "Expected FPS argument" << std::endl;
+
+			if (useDebugConsole)
+				system("PAUSE");
+
+			exit(0);
+		}
+
+		try {
+			scFPSMode = std::stoi(__wargv[argi + 1]);
+		} catch (...) {
+			std::wcout << "Expected FPS argument" << std::endl;
+
+			if (useDebugConsole)
+				system("PAUSE");
+
+			exit(0);
+		}
+
+		if (scFPSMode <= 0 || scFPSMode > 240) {
+			std::wcout << "FPS out of range (1-240)" << std::endl;
+
+			if (useDebugConsole)
+				system("PAUSE");
+
+			exit(0);
+		}
+
+		scMinFrameTime = 1000 / scFPSMode;
+	}
+
+	// Moise input
+	scMouseEnabled = cmdOptionExists(__wargv, __wargv + __argc, L"--mouse");
 
 	// Change output mode to Unicode text
 	int _sm = _setmode(_fileno(stdout), _O_U16TEXT);
@@ -4180,11 +4308,229 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 	// Release OpenGL context for this thread
 	wglMakeCurrent(NULL, NULL);
 
-	// Start new thread for render
-	startRenderThread();
+	// Load shaders and packs after GL context initialized and exit on failture
+	bool initFailture = 0;
 
-	// Enter message dispatching loop
-	enterDispatchLoop();
+	// Pack path
+	if (argi = getCmdOption(__wargv, __wargv + __argc, L"--pack")) {
+		if (argi + 1 >= __argc) {
+			std::wcout << "Expected pack path argument" << std::endl;
+
+			if (useDebugConsole)
+				system("PAUSE");
+
+			exit(0);
+		}
+
+		try {
+			scPackPath = std::filesystem::absolute(__wargv[argi + 1]);
+
+			reloadPack();
+		} catch (...) {
+			std::wcout << "Pack not found in " << __wargv[argi + 1] << std::endl;
+
+			if (useDebugConsole)
+				system("PAUSE");
+
+			exit(0);
+		}
+	}
+
+	// Main shader & options
+	if (argi = getCmdOption(__wargv, __wargv + __argc, L"--main")) {
+		if (argi + 1 >= __argc) {
+			std::wcout << "Expected main shader path argument" << std::endl;
+
+			if (useDebugConsole)
+				system("PAUSE");
+
+			exit(0);
+		}
+
+		try {
+			std::wstring shaderPath = std::filesystem::absolute(__wargv[argi + 1]);
+
+			loadMainShaderFromFile(shaderPath);
+		} catch (...) {
+			std::wcout << "Main shader not found in " << __wargv[argi + 1] << std::endl;
+
+			if (useDebugConsole)
+				system("PAUSE");
+
+			exit(0);
+		}
+	}
+
+	for (int inputId = 0; inputId < 4; ++inputId) {
+		if (argi = getCmdOption(__wargv, __wargv + __argc, std::wstring(L"--main:") + std::to_wstring(inputId))) {
+			if (argi + 1 >= __argc) {
+				std::wcout << "Expected main shader input " << inputId << " argument" << std::endl;
+
+				if (useDebugConsole)
+					system("PAUSE");
+
+				exit(0);
+			}
+
+			std::wstring arg = __wargv[argi];
+			
+			if (arg.rfind(L"image:", 0) == 0) {
+				try {
+					std::wstring imagePath = std::filesystem::absolute(arg.substr(6)); // XXX: hardcoded constant
+
+					SCResource input;
+					input.type = IMAGE_TEXTURE;
+					input.path = imagePath;
+
+					loadMainShaderResource(input, inputId);
+				} catch (...) {
+					std::wcout << "Main shader input " << inputId << " image not found in " << __wargv[argi + 1] << std::endl;
+
+					if (useDebugConsole)
+						system("PAUSE");
+
+					exit(0);
+				}
+			} else if (arg == L"a") {
+				SCResource input;
+				input.type = FRAME_BUFFER;
+				input.buffer_id = 0;
+
+				loadMainShaderResource(input, inputId);
+			} else if (arg == L"b") {
+				SCResource input;
+				input.type = FRAME_BUFFER;
+				input.buffer_id = 1;
+
+				loadMainShaderResource(input, inputId);
+			} else if (arg == L"c") {
+				SCResource input;
+				input.type = FRAME_BUFFER;
+				input.buffer_id = 2;
+
+				loadMainShaderResource(input, inputId);
+			} else if (arg == L"d") {
+				SCResource input;
+				input.type = FRAME_BUFFER;
+				input.buffer_id = 3;
+
+				loadMainShaderResource(input, inputId);
+			} else if (arg == L"none") {
+				unloadMainShaderResource(inputId);
+			} else {
+				std::wcout << "Main shader input " << inputId << " has unsupported value " << arg << ", expected one of : (image:path, a, b, c, d, none)" << __wargv[argi + 1] << std::endl;
+
+				if (useDebugConsole)
+					system("PAUSE");
+
+				exit(0);
+			}
+		}
+	}
+
+	// Buffer shaders & options
+	for (int bufferId = 0; bufferId < 4; ++bufferId) {
+		wchar_t buffer_label = L"abcd"[bufferId];
+
+		if (argi = getCmdOption(__wargv, __wargv + __argc, std::wstring(L"--") + buffer_label)) {
+			if (argi + 1 >= __argc) {
+				std::wcout << "Expected buffer " << buffer_label << " shader path argument" << std::endl;
+
+				if (useDebugConsole)
+					system("PAUSE");
+
+				exit(0);
+			}
+
+			try {
+				std::wstring shaderPath = std::filesystem::absolute(__wargv[argi + 1]);
+
+				loadBufferShaderFromFile(shaderPath, bufferId);
+			} catch (...) {
+				std::wcout << "Buffer " << buffer_label << " shader not found in " << __wargv[argi + 1] << std::endl;
+
+				if (useDebugConsole)
+					system("PAUSE");
+
+				exit(0);
+			}
+		}
+
+		for (int inputId = 0; inputId < 4; ++inputId) {
+			if (argi = getCmdOption(__wargv, __wargv + __argc, std::wstring(L"--") + buffer_label + L":" + std::to_wstring(inputId))) {
+				if (argi + 1 >= __argc) {
+					std::wcout << "Expected buffer " << buffer_label << " shader input " << inputId << " argument" << std::endl;
+
+					if (useDebugConsole)
+						system("PAUSE");
+
+					exit(0);
+				}
+
+				std::wstring arg = __wargv[argi];
+
+				if (arg.rfind(L"image:", 0) == 0) {
+					try {
+						std::wstring imagePath = std::filesystem::absolute(arg.substr(6)); // XXX: hardcoded constant
+
+						SCResource input;
+						input.type = IMAGE_TEXTURE;
+						input.path = imagePath;
+
+						loadBufferShaderResource(input, bufferId, inputId);
+					} catch (...) {
+						std::wcout << "Buffer " << buffer_label << " shader input " << inputId << " image not found in " << __wargv[argi + 1] << std::endl;
+
+						if (useDebugConsole)
+							system("PAUSE");
+
+						exit(0);
+					}
+				} else if (arg == L"a") {
+					SCResource input;
+					input.type = FRAME_BUFFER;
+					input.buffer_id = 0;
+
+					loadMainShaderResource(input, inputId);
+				} else if (arg == L"b") {
+					SCResource input;
+					input.type = FRAME_BUFFER;
+					input.buffer_id = 1;
+
+					loadMainShaderResource(input, inputId);
+				} else if (arg == L"c") {
+					SCResource input;
+					input.type = FRAME_BUFFER;
+					input.buffer_id = 2;
+
+					loadMainShaderResource(input, inputId);
+				} else if (arg == L"d") {
+					SCResource input;
+					input.type = FRAME_BUFFER;
+					input.buffer_id = 3;
+
+					loadMainShaderResource(input, inputId);
+				} else if (arg == L"none") {
+					unloadBufferShaderResource(bufferId, inputId);
+				} else {
+					std::wcout << "Buffer " << buffer_label << " shader input " << inputId << " has unsupported value " << arg << ", expected one of : (image:path, a, b, c, d, none)" << __wargv[argi + 1] << std::endl;
+
+					if (useDebugConsole)
+						system("PAUSE");
+
+					exit(0);
+				}
+			}
+		}
+	}
+
+	if (!initFailture) {
+		// Start new thread for render
+		startRenderThread();
+
+		// Enter message dispatching loop
+		enterDispatchLoop();
+	}
 
 	// After dispatch loop: exit and dispose
 	exitApp();
