@@ -1,12 +1,12 @@
-// DesktopWallpaper.cpp : Defines the entry point for the application.
+// Vebro.cpp : Defines the entry point for the application.
 //
 // Usable: https://zetcode.com/gui/winapi/menus/
 
 #include "framework.h"
-#include "DesktopWallpaper.h"
+#include "Vebro.h"
 
 // Debug definisions
-#define DEBUG_DISPLAY_CONSOLE_WINDOW
+// #define DEBUG_DISPLAY_CONSOLE_WINDOW
 
 // Main Tray menu
 // Base disabled items id (Items used only for text display with no function)
@@ -1833,7 +1833,22 @@ void repaintDesktop() {
 		return;
 	}
 
-	RedrawWindow(workerw, NULL, NULL, RDW_INVALIDATE);
+	RedrawWindow(workerw, NULL, NULL, RDW_INTERNALPAINT | RDW_UPDATENOW | RDW_ALLCHILDREN | RDW_INVALIDATE);
+
+	// TODO: Figure out how to repaint desktop window, lol
+	
+	//int HWND_BROADCAST = 0xffff;
+	//int WM_SETTINGCHANGE = 0x1a;
+	//int SMTO_ABORTIFHUNG = 0x0002;
+
+	//SendMessageTimeout(HWND_BROADCAST, WM_SETTINGCHANGE, NULL, NULL, SMTO_ABORTIFHUNG, 100, NULL);
+	
+	//UpdatePerUserSystemParameter(1, TRUE);
+	
+	//FillRect();
+	//RECT rect;
+	//::GetClientRect(::GetDesktopWindow(), &rect);
+	//::RedrawWindow(::GetDesktopWindow(), &rect, NULL, RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN);
 }
 
 // Initialize the OpenGL scene
@@ -2069,7 +2084,7 @@ void renderSC() {
 				// Require both conditions to complete in order to render
 				if (glBufferShaderShouldBeRendered[i] && glBufferShaderProgramIDs[i] != -1) {
 
-					glBindFramebuffer(GL_FRAMEBUFFER, glBufferShaderFramebuffers[(scBufferFrames[i] + 1) % 2][i]);
+					glBindFramebuffer(GL_FRAMEBUFFER, glBufferShaderFramebuffers[(scBufferFrames[i] + 1) & 1][i]);
 					glViewport(0, 0, glWidth, glHeight);
 					glClearColor(0, 0, 0, 0);
 					glClear(GL_COLOR_BUFFER_BIT);
@@ -2163,7 +2178,7 @@ void renderSC() {
 								
 								// Bind texture
 								glActiveTexture(GL_TEXTURE5 + i * 4 + k);
-								glBindTexture(GL_TEXTURE_2D, glBufferShaderFramebufferTextures[scBufferFrames[scResources[scBufferShaderInputs[i][k]].resource.buffer_id] % 2][scResources[scBufferShaderInputs[i][k]].resource.buffer_id]);
+								glBindTexture(GL_TEXTURE_2D, glBufferShaderFramebufferTextures[scBufferFrames[scResources[scBufferShaderInputs[i][k]].resource.buffer_id] & 1][scResources[scBufferShaderInputs[i][k]].resource.buffer_id]);
 								glUniform1i(glGetUniformLocation(glBufferShaderProgramIDs[i], iChannelUniforms[k]), 5 + i * 4 + k);
 
 								// Width & Height 
@@ -2281,7 +2296,7 @@ void renderSC() {
 
 						// Bind texture
 						glActiveTexture(GL_TEXTURE1 + k);
-						glBindTexture(GL_TEXTURE_2D, glBufferShaderFramebufferTextures[scBufferFrames[scResources[scMainShaderInputs[k]].resource.buffer_id] % 2][scResources[scMainShaderInputs[k]].resource.buffer_id]);
+						glBindTexture(GL_TEXTURE_2D, glBufferShaderFramebufferTextures[scBufferFrames[scResources[scMainShaderInputs[k]].resource.buffer_id] & 1][scResources[scMainShaderInputs[k]].resource.buffer_id]);
 						glUniform1i(glGetUniformLocation(glMainShaderProgramID, iChannelUniforms[k]), 1 + k);
 
 						// Width & Height 
@@ -3004,6 +3019,9 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_SEPARATOR, IDM_SEP, _T("SEP"));
 					//
 
+					// TODO: Sound input
+					/*
+					
 					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId, _T("Enable sound capture"));
 					trayMenuHandlers.push_back([]() {
 						appLockRequested = TRUE;
@@ -3041,6 +3059,8 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 
 					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) traySoundSourceMenu, _T("Sound source"));
 
+					*/
+
 					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId, _T("Enable mouse"));
 					trayMenuHandlers.push_back([]() {
 						appLockRequested = TRUE;
@@ -3077,6 +3097,12 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 							for (int i = 0; i < 4; ++i)
 								if (glBufferShaderProgramIDs[i] != -1)
 									unloadBufferShader(i);
+
+							// Clear framebuffer
+							glBindFramebuffer(GL_FRAMEBUFFER, 0);
+							glViewport(0, 0, glWidth, glHeight);
+							glClearColor(0, 0, 0, 0);
+							glClear(GL_COLOR_BUFFER_BIT);
 
 							unloadResources();
 
@@ -3421,6 +3447,9 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 							renderMutex.unlock();
 						});
 
+						// TODO: Support other input types
+						/*
+						
 						InsertMenu(trayMainInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Keyboard"));
 						EnableMenuItem(trayMainInputTypeMenu, menuId - 1, MF_DISABLED | MF_GRAYED); // Disabled
 						trayMenuHandlers.push_back([inputId]() {
@@ -3450,6 +3479,8 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 						trayMenuHandlers.push_back([inputId]() {
 							std::wcout << "Incomplete :: Main Shader :: Set input " << inputId << " :: Webcam" << std::endl;
 						});
+
+						*/
 
 
 						if (scMainShaderInputs[inputId] == -1 || scResources[scMainShaderInputs[inputId]].empty)
@@ -3723,6 +3754,10 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 								renderMutex.unlock();
 							});
 
+
+							// TODO: Support other input types
+							/*
+
 							InsertMenu(trayBufferInputTypeMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId++, _T("Keyboard"));
 							EnableMenuItem(trayBufferInputTypeMenu, menuId - 1, MF_DISABLED | MF_GRAYED); // Disabled
 							trayMenuHandlers.push_back([bufferId, inputId]() {
@@ -3752,6 +3787,8 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 							trayMenuHandlers.push_back([bufferId, inputId]() {
 								std::wcout << "Incomplete :: Buffer " << bufferId << " :: Set input " << inputId << " :: Webcam" << std::endl;
 							});
+
+							*/
 
 							if (scBufferShaderInputs[bufferId][inputId] == -1 || scResources[scBufferShaderInputs[bufferId][inputId]].empty)
 								InsertMenu(trayBufferShaderMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR) trayBufferInputTypeMenu, (std::wstring(L"Input ") + std::to_wstring(inputId)).c_str());
@@ -3789,7 +3826,6 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 						if (!wndDebugOutput) {
 							AllocConsole();
 							SetConsoleTitle(L"Debug output");
-							// TODO: Prevent close
 							SetConsoleCtrlHandler(NULL, TRUE);
 							FILE* _frp = freopen("CONOUT$", "w", stdout);
 						} else {
@@ -3896,7 +3932,7 @@ int createTrayMenu(_In_ HINSTANCE hInstance) {
 	trayNID.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
 	trayNID.hIcon = trayIcon;
 	trayNID.uCallbackMessage = WM_TRAY_ICON;
-	std::wcscpy(trayNID.szTip, L"Desktop Wallpaper Menu");
+	std::wcscpy(trayNID.szTip, L"Vebro Menu");
 
 	// Push icon to tray
 	Shell_NotifyIcon(NIM_ADD, &trayNID);
@@ -3970,18 +4006,18 @@ int createDesktopWindow(_In_ HINSTANCE hInstance) {
 	wc.hCursor = LoadCursor(NULL, IDC_ARROW);
 	wc.hbrBackground = NULL;
 	wc.lpszMenuName = NULL;
-	wc.lpszClassName = L"DESKTOPWALLPAPER_OpenGL";
+	wc.lpszClassName = L"VEBRO_OpenGL";
 
 	if (!RegisterClass(&wc)) {
-		std::wcout << "Failed to register [DESKTOPWALLPAPER_OpenGL] window class" << std::endl;
+		std::wcout << "Failed to register [VEBRO_OpenGL] window class" << std::endl;
 		return 1;
 	}
 
 	// Initialize window
-	glWindow = CreateWindow(L"DESKTOPWALLPAPER_OpenGL", L"Sample Text", WS_OVERLAPPEDWINDOW | WS_CLIPSIBLINGS | WS_CLIPCHILDREN, currentWindowDimensions.left, currentWindowDimensions.top, currentWindowDimensions.right - currentWindowDimensions.left, currentWindowDimensions.bottom - currentWindowDimensions.top, NULL, NULL, hInstance, NULL);
+	glWindow = CreateWindow(L"VEBRO_OpenGL", L"Sample Text", WS_OVERLAPPEDWINDOW | WS_CLIPSIBLINGS | WS_CLIPCHILDREN, currentWindowDimensions.left, currentWindowDimensions.top, currentWindowDimensions.right - currentWindowDimensions.left, currentWindowDimensions.bottom - currentWindowDimensions.top, NULL, NULL, hInstance, NULL);
 	
 	if (!glWindow) {
-		std::wcout << "Failed to create window with class [DESKTOPWALLPAPER_OpenGL]" << std::endl;
+		std::wcout << "Failed to create window with class [VEBRO_OpenGL]" << std::endl;
 		return 1;
 	}
 

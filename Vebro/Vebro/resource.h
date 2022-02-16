@@ -5,7 +5,7 @@
 #define IDS_APP_TITLE                   103
 #define IDI_ICON                        107
 #define IDI_ICON_SMALL                  108
-#define IDC_DESKTOPWALLPAPER            109
+#define IDC_VEBRO                       109
 #define IDI_TRAY_ICON                   134
 #define IDC_STATIC                      -1
 
