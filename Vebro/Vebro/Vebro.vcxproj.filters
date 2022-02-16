@@ -48,19 +48,7 @@
     </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
-    <Image Include="small.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
     <Image Include="Vebro.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="icon1.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="images\tray_icon.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="tray_icon.ico">
       <Filter>Resource Files</Filter>
     </Image>
   </ItemGroup>

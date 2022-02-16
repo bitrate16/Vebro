@@ -176,10 +176,6 @@
   </ItemGroup>
   <ItemGroup>
     <Image Include="Vebro.ico" />
-    <Image Include="icon1.ico" />
-    <Image Include="images\tray_icon.ico" />
-    <Image Include="small.ico" />
-    <Image Include="tray_icon.ico" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

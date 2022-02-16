@@ -3901,8 +3901,8 @@ int createTrayMenu(_In_ HINSTANCE hInstance) {
 	wcex.cbClsExtra = 0;
 	wcex.cbWndExtra = 0;
 	wcex.hInstance = hInstance;
-	wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_TRAY_ICON));
-	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_TRAY_ICON));
+	wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_ICON));
+	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_ICON));
 	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
 	wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
 	wcex.lpszMenuName = L"MenuName";
@@ -3921,14 +3921,14 @@ int createTrayMenu(_In_ HINSTANCE hInstance) {
 	}
 
 	// Load icon
-	trayIcon = LoadIcon(hInstance, (LPCTSTR) MAKEINTRESOURCE(IDI_TRAY_ICON));
+	trayIcon = LoadIcon(hInstance, (LPCTSTR) MAKEINTRESOURCE(IDI_ICON));
 
 	// Create Icon Data structure
 	trayNID;
 	trayNID.cbSize = sizeof(NOTIFYICONDATA);
 	// Handle of the window which will process this app. messages 
 	trayNID.hWnd = trayWindow;
-	trayNID.uID = IDI_TRAY_ICON;
+	trayNID.uID = IDI_ICON;
 	trayNID.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
 	trayNID.hIcon = trayIcon;
 	trayNID.uCallbackMessage = WM_TRAY_ICON;
