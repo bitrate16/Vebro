@@ -1,5 +1,7 @@
 #pragma once
 
+const wchar_t* VERSION = L"1.0";
+
 // Hello, shadertoy.com
 const char* defaultMainShader = R"glsl(#version 330 core
 uniform vec3      iResolution;           // Viewport resolution, pixels

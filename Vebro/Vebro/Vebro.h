@@ -1,12 +1,8 @@
 #pragma once
 
 #include "resource.h"
-// Deprecated: #include "TrayMenuItems.h"
-
 #include "WorkerWEnumerator.h"
-
 #include "Strings.h"
-
 
 // Link OpenGL
 #pragma comment(lib, "opengl32.lib")

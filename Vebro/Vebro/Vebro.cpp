@@ -3821,6 +3821,10 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_SEPARATOR, IDM_SEP, _T("SEP"));
 					//
 
+					// Display version
+					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, disabledId++, (std::wstring(L"Vebro Version: ") + VERSION).c_str());
+					EnableMenuItem(trayMainMenu, disabledId - 1, MF_DISABLED | MF_GRAYED); // Disabled
+
 					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId, _T("Enable debug console"));
 					trayMenuHandlers.push_back([]() {
 						if (!wndDebugOutput) {
