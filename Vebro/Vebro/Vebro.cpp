@@ -3828,10 +3828,11 @@ LRESULT CALLBACK trayWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 					InsertMenu(trayMainMenu, 0xFFFFFFFF, MF_BYPOSITION | MF_STRING, menuId, _T("Enable debug console"));
 					trayMenuHandlers.push_back([]() {
 						if (!wndDebugOutput) {
-							AllocConsole();
-							SetConsoleTitle(L"Debug output");
-							SetConsoleCtrlHandler(NULL, TRUE);
-							FILE* _frp = freopen("CONOUT$", "w", stdout);
+							if (AllocConsole()) {
+								SetConsoleTitle(L"Debug output");
+								SetConsoleCtrlHandler(NULL, TRUE);
+								FILE* _frp = freopen("CONOUT$", "w", stdout);
+							}
 						} else {
 							ShowWindow(GetConsoleWindow(), SW_HIDE);
 							FreeConsole();
@@ -4163,9 +4164,10 @@ void enterDispatchLoop() {
 // Command line options parsing
 // https://stackoverflow.com/a/868894
 // Modified: returns index of arguemnt or 0 (zero argument is always program name)
-size_t getCmdOption(wchar_t** begin, wchar_t** end, const std::wstring& option) {
+size_t getCmdOptionIndex(wchar_t** begin, wchar_t** end, const std::wstring& option) {
 	wchar_t** itr = std::find(begin, end, option);
-	if (itr != end && ++itr != end) {
+	if (itr != end) {
+		std::wcout << itr - begin << std::endl;
 		return itr - begin;
 	}
 	return 0;
@@ -4180,10 +4182,36 @@ bool cmdOptionExists(wchar_t** begin, wchar_t** end, const std::wstring& option)
 int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ PWSTR pCmdLine, _In_ int nCmdShow) {
 
 #ifdef DEBUG_DISPLAY_CONSOLE_WINDOW
-	AllocConsole();
-	SetConsoleTitle(L"Debug output");
-	SetConsoleCtrlHandler(NULL, TRUE);
-	FILE* _frp = freopen("CONOUT$", "w", stdout);
+	
+	if (AllocConsole()) {
+		SetConsoleTitle(L"Debug output");
+		SetConsoleCtrlHandler(NULL, TRUE);
+		FILE* _frp = freopen("CONOUT$", "w", stdout);
+	}
+
+#endif
+
+	bool useDebugConsole = cmdOptionExists(__wargv, __wargv + __argc, L"--debug");
+
+	// Open console first for errors tracking
+	if (useDebugConsole) {
+
+		FreeConsole();
+
+		if (AllocConsole()) {
+			SetConsoleTitle(L"Debug output");
+			SetConsoleCtrlHandler(NULL, TRUE);
+			FILE* _frp = freopen("CONOUT$", "w", stdout);
+		}
+	} 
+#ifndef DEBUG_DISPLAY_CONSOLE_WINDOW
+
+	else {
+		if (AttachConsole(ATTACH_PARENT_PROCESS)) {
+			FILE* _frp = freopen("CONOUT$", "w", stdout);
+		}
+	}
+
 #endif
 
 	// Parse commandline options
@@ -4239,26 +4267,19 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 		std::wcout << " --debug            enable debug output" << std::endl;
 
 		// DEBUG:
-		system("PAUSE");
+		// system("PAUSE");
+
+		if (useDebugConsole)
+			system("PAUSE");
 
 		return 0;
-	}
-
-	bool useDebugConsole = cmdOptionExists(__wargv, __wargv + __argc, L"--debug");
-
-	// Open console first for errors tracking
-	if (useDebugConsole) {
-		AllocConsole();
-		SetConsoleTitle(L"Debug output");
-		SetConsoleCtrlHandler(NULL, TRUE);
-		FILE* _frp = freopen("CONOUT$", "w", stdout);
 	}
 
 	// Index of argument
 	size_t argi = 0;
 
 	// Display ID
-	if (argi = getCmdOption(__wargv, __wargv + __argc, L"--display")) {
+	if (argi = getCmdOptionIndex(__wargv, __wargv + __argc, L"--display")) {
 		if (argi + 1 >= __argc) {
 			std::wcout << "Expected displayID argument" << std::endl;
 
@@ -4284,7 +4305,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 	scFullscreen = cmdOptionExists(__wargv, __wargv + __argc, L"--fullscreen");
 
 	// FPS
-	if (argi = getCmdOption(__wargv, __wargv + __argc, L"--fps")) {
+	if (argi = getCmdOptionIndex(__wargv, __wargv + __argc, L"--fps")) {
 		if (argi + 1 >= __argc) {
 			std::wcout << "Expected FPS argument" << std::endl;
 
@@ -4351,8 +4372,11 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 	// Load shaders and packs after GL context initialized and exit on failture
 	bool initFailture = 0;
 
+	// Acquire GL context
+	wglMakeCurrent(glDevice, glContext);
+
 	// Pack path
-	if (argi = getCmdOption(__wargv, __wargv + __argc, L"--pack")) {
+	if (argi = getCmdOptionIndex(__wargv, __wargv + __argc, L"--pack")) {
 		if (argi + 1 >= __argc) {
 			std::wcout << "Expected pack path argument" << std::endl;
 
@@ -4363,7 +4387,10 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 		}
 
 		try {
+			std::wcout << __argc << L" " << argi << L" " << (argi + 1) << std::endl;
+			std::wcout << L"pack: " << __wargv[argi + 1] << std::endl;
 			scPackPath = std::filesystem::absolute(__wargv[argi + 1]);
+			std::wcout << L"scPackPath: " << scPackPath << std::endl;
 
 			reloadPack();
 		} catch (...) {
@@ -4377,7 +4404,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 	}
 
 	// Main shader & options
-	if (argi = getCmdOption(__wargv, __wargv + __argc, L"--main")) {
+	if (argi = getCmdOptionIndex(__wargv, __wargv + __argc, L"--main")) {
 		if (argi + 1 >= __argc) {
 			std::wcout << "Expected main shader path argument" << std::endl;
 
@@ -4402,7 +4429,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 	}
 
 	for (int inputId = 0; inputId < 4; ++inputId) {
-		if (argi = getCmdOption(__wargv, __wargv + __argc, std::wstring(L"--main:") + std::to_wstring(inputId))) {
+		if (argi = getCmdOptionIndex(__wargv, __wargv + __argc, std::wstring(L"--main:") + std::to_wstring(inputId))) {
 			if (argi + 1 >= __argc) {
 				std::wcout << "Expected main shader input " << inputId << " argument" << std::endl;
 
@@ -4472,7 +4499,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 	for (int bufferId = 0; bufferId < 4; ++bufferId) {
 		wchar_t buffer_label = L"abcd"[bufferId];
 
-		if (argi = getCmdOption(__wargv, __wargv + __argc, std::wstring(L"--") + buffer_label)) {
+		if (argi = getCmdOptionIndex(__wargv, __wargv + __argc, std::wstring(L"--") + buffer_label)) {
 			if (argi + 1 >= __argc) {
 				std::wcout << "Expected buffer " << buffer_label << " shader path argument" << std::endl;
 
@@ -4497,7 +4524,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 		}
 
 		for (int inputId = 0; inputId < 4; ++inputId) {
-			if (argi = getCmdOption(__wargv, __wargv + __argc, std::wstring(L"--") + buffer_label + L":" + std::to_wstring(inputId))) {
+			if (argi = getCmdOptionIndex(__wargv, __wargv + __argc, std::wstring(L"--") + buffer_label + L":" + std::to_wstring(inputId))) {
 				if (argi + 1 >= __argc) {
 					std::wcout << "Expected buffer " << buffer_label << " shader input " << inputId << " argument" << std::endl;
 
@@ -4563,6 +4590,34 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 			}
 		}
 	}
+
+
+
+
+
+
+
+
+	// Instead of exit(0) call exitAPp()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	// Release GL context
+	wglMakeCurrent(NULL, NULL);
 
 	if (!initFailture) {
 		// Start new thread for render
