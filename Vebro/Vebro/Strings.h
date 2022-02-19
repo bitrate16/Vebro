@@ -17,7 +17,9 @@ uniform sampler2D iChannel2;             // Input channel 2
 uniform sampler2D iChannel3;             // Input channel 3
 uniform vec4      iDate;                 // year, month, day, time (seconds)
 uniform float     iSampleRate;           // Sound sample rate (i.e., 44100)
-out vec4 gl_FragColor;
+
+// Compability, instead of gl_FragColor
+out vec4 out_FragColor;
 
 // Function for your shadertoy code
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
@@ -32,7 +34,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 }
 
 // Function for pure glsl code
-void main(){vec4 color=vec4(0.0,0.,0.,1.);mainImage(color,gl_FragCoord.xy);color.rgb=clamp(color.rgb,0.,1.);color.w=1.0;gl_FragColor=color;})glsl";
+void main(){vec4 color=vec4(0.0,0.,0.,1.);mainImage(color,gl_FragCoord.xy);color.rgb=clamp(color.rgb,0.,1.);color.w=1.0;out_FragColor=color;})glsl";
 
 const char* defaultBufferShader = R"glsl(#version 330 core
 uniform vec3      iResolution;           // Viewport resolution, pixels
@@ -48,7 +50,9 @@ uniform sampler2D iChannel2;             // Input channel 2
 uniform sampler2D iChannel3;             // Input channel 3
 uniform vec4      iDate;                 // Year, month, day, time (seconds)
 uniform float     iSampleRate;           // Sound sample rate (i.e., 44100)
-out vec4 gl_FragColor;
+
+// Compability, instead of gl_FragColor
+out vec4 out_FragColor;
 
 // Function for your shadertoy code
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
@@ -63,4 +67,4 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 }
 
 // Function for pure glsl code
-void main(){vec4 color=vec4(0.0,0.,0.,0.);mainImage(color,gl_FragCoord.xy);color=clamp(color,0.,1.);gl_FragColor=color;})glsl";
+void main(){vec4 color=vec4(0.0,0.,0.,0.);mainImage(color,gl_FragCoord.xy);color=clamp(color,0.,1.);out_FragColor=color;})glsl";
