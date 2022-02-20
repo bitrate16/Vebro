@@ -1173,6 +1173,7 @@ void reloadPack() {
 						return;
 					}
 
+					// Not error, however..
 					if (mainShader["inputs"].size() < 4 || mainShader["inputs"].size() > 4)
 						std::wcout << "Warning :: JSON :: Main Shader has " << mainShader["inputs"].size() << " inputs, but 4 required :: " << scPackPath << std::endl;
 
@@ -1676,6 +1677,7 @@ void savePack() {
 	if (scPackPath == L"")
 		return;
 
+	/*
 	if (glMainShaderPath == L"") {
 		std::wcout << "To JSON :: Pack should have a Main Shader :: " << scPackPath << std::endl;
 
@@ -1688,57 +1690,62 @@ void savePack() {
 
 		return;
 	}
+	*/
 
 	std::filesystem::path basePackPath = std::filesystem::path(std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(scPackPath)).parent_path();
 	
 	nlohmann::json j;
 
-	j["Main"]["path"] = std::filesystem::relative(std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(glMainShaderPath), basePackPath).string();
-	
-	j["Main"]["inputs"] = nlohmann::json::array();
+	// Main shader is not required, however..
+	if (glMainShaderPath != L"") {
+		j["Main"]["path"] = std::filesystem::relative(std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(glMainShaderPath), basePackPath).string();
 
-	for (int i = 0; i < 4; ++i) {
-		if (scMainShaderInputs[i] == -1)
-			j["Main"]["inputs"][i] = nullptr;
-		else {
-			if (scResources[scMainShaderInputs[i]].empty) 
-				std::wcout << "To JSON :: Main Shader input " << i << " is empty, scResources corrupt" << std::endl;
+		j["Main"]["inputs"] = nlohmann::json::array();
+
+		for (int i = 0; i < 4; ++i) {
+			if (scMainShaderInputs[i] == -1)
+				continue;
+			//j["Main"]["inputs"][i] = nullptr;
 			else {
-				switch (scResources[scMainShaderInputs[i]].resource.type) {
-					case IMAGE_TEXTURE: {
-						j["Main"]["inputs"][i]["type"] = "Image";
-						j["Main"]["inputs"][i]["path"] = std::filesystem::relative(std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(scResources[scMainShaderInputs[i]].resource.path), basePackPath).string();
-						break;
-					}
+				if (scResources[scMainShaderInputs[i]].empty)
+					std::wcout << "To JSON :: Main Shader input " << i << " is empty, scResources corrupt" << std::endl;
+				else {
+					switch (scResources[scMainShaderInputs[i]].resource.type) {
+						case IMAGE_TEXTURE: {
+							j["Main"]["inputs"][i]["type"] = "Image";
+							j["Main"]["inputs"][i]["path"] = std::filesystem::relative(std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(scResources[scMainShaderInputs[i]].resource.path), basePackPath).string();
+							break;
+						}
 
-					case AUDIO_TEXTURE: { // TODO: Save media resources
-						std::wcout << "To JSON :: Main Shader :: Incomplete :: Audio" << std::endl;
-						break;
-					}
+						case AUDIO_TEXTURE: { // TODO: Save media resources
+							std::wcout << "To JSON :: Main Shader :: Incomplete :: Audio" << std::endl;
+							break;
+						}
 
-					case VIDEO_TEXTURE: {
-						std::wcout << "To JSON :: Main Shader :: Incomplete :: Video" << std::endl;
-						break;
-					}
+						case VIDEO_TEXTURE: {
+							std::wcout << "To JSON :: Main Shader :: Incomplete :: Video" << std::endl;
+							break;
+						}
 
-					case MIC_TEXTURE: {
-						std::wcout << "To JSON :: Main Shader :: Incomplete :: Microphone" << std::endl;
-						break;
-					}
+						case MIC_TEXTURE: {
+							std::wcout << "To JSON :: Main Shader :: Incomplete :: Microphone" << std::endl;
+							break;
+						}
 
-					case WEB_TEXTURE: {
-						std::wcout << "To JSON :: Main Shader :: Incomplete :: Webcam" << std::endl;
-						break;
-					}
+						case WEB_TEXTURE: {
+							std::wcout << "To JSON :: Main Shader :: Incomplete :: Webcam" << std::endl;
+							break;
+						}
 
-					case KEYBOARD_TEXTURE: {
-						std::wcout << "To JSON :: Main Shader :: Incomplete :: Keyboard" << std::endl;
-						break;
-					}
+						case KEYBOARD_TEXTURE: {
+							std::wcout << "To JSON :: Main Shader :: Incomplete :: Keyboard" << std::endl;
+							break;
+						}
 
-					case FRAME_BUFFER: {
-						j["Main"]["inputs"][i]["type"] = std::string("Buffer") + "ABCD"[scResources[scMainShaderInputs[i]].resource.buffer_id];
-						break;
+						case FRAME_BUFFER: {
+							j["Main"]["inputs"][i]["type"] = std::string("Buffer") + "ABCD"[scResources[scMainShaderInputs[i]].resource.buffer_id];
+							break;
+						}
 					}
 				}
 			}
@@ -1747,17 +1754,19 @@ void savePack() {
 
 	// Do the same for buffers
 	for (int k = 0; k < 4; ++k) {
-		std::string bufferKey = std::string("Buffer") + "ABCD"[k];
 
 		if (glBufferShaderPath[k] == L"")
 			continue;
+
+		std::string bufferKey = std::string("Buffer") + "ABCD"[k];
 
 		j[bufferKey]["path"] = std::filesystem::relative(std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(glBufferShaderPath[k]), basePackPath).string();
 		j[bufferKey]["inputs"] = nlohmann::json::array();
 
 		for (int i = 0; i < 4; ++i) {
 			if (scBufferShaderInputs[k][i] == -1)
-				j[bufferKey]["inputs"][i] = nullptr;
+				continue;
+				//j[bufferKey]["inputs"][i] = nullptr;
 			else {
 				if (scResources[scBufferShaderInputs[k][i]].empty)
 					std::wcout << "To JSON :: Buffer " << ("ABCD"[k]) << " Shader input " << i << " is empty, scResources corrupt" << std::endl;
@@ -2441,8 +2450,10 @@ void exitApp() {
 
 	// Wait for rendering thread to exit
 	appExiting = TRUE;
-	renderThread->join();
-	delete renderThread;
+	if (renderThread) {
+		renderThread->join();
+		delete renderThread;
+	}
 
 	// Tray icon delete
 	Shell_NotifyIcon(NIM_DELETE, &trayNID);
@@ -4214,7 +4225,13 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 
 #endif
 
-	// Parse commandline options
+	// Change output mode to Unicode text
+	int _sm = _setmode(_fileno(stdout), _O_U16TEXT);
+
+	
+	// Parse first portion of arguments
+
+	// Help message
 	if (cmdOptionExists(__wargv, __wargv + __argc, L"-h") || cmdOptionExists(__wargv, __wargv + __argc, L"--help")) {
 		std::wcout << "help for commandline options (use separately)" << std::endl;
 		std::wcout << " -h, --help         display help" << std::endl;
@@ -4341,8 +4358,8 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 	// Moise input
 	scMouseEnabled = cmdOptionExists(__wargv, __wargv + __argc, L"--mouse");
 
-	// Change output mode to Unicode text
-	int _sm = _setmode(_fileno(stdout), _O_U16TEXT);
+
+	// Create Windows & GL Context
 
 	// Create Tray menu
 	if (createTrayMenu(hInstance)) {
@@ -4369,11 +4386,11 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 	// Release OpenGL context for this thread
 	wglMakeCurrent(NULL, NULL);
 
-	// Load shaders and packs after GL context initialized and exit on failture
-	bool initFailture = 0;
-
 	// Acquire GL context
 	wglMakeCurrent(glDevice, glContext);
+
+
+	// Parse rest of arguments (Textures, inputs)
 
 	// Pack path
 	if (argi = getCmdOptionIndex(__wargv, __wargv + __argc, L"--pack")) {
@@ -4383,7 +4400,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 			if (useDebugConsole)
 				system("PAUSE");
 
-			exit(0);
+			exitApp(); exit(0);
 		}
 
 		try {
@@ -4399,7 +4416,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 			if (useDebugConsole)
 				system("PAUSE");
 
-			exit(0);
+			exitApp(); exit(0);
 		}
 	}
 
@@ -4411,7 +4428,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 			if (useDebugConsole)
 				system("PAUSE");
 
-			exit(0);
+			exitApp(); exit(0);
 		}
 
 		try {
@@ -4424,7 +4441,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 			if (useDebugConsole)
 				system("PAUSE");
 
-			exit(0);
+			exitApp(); exit(0);
 		}
 	}
 
@@ -4436,7 +4453,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 				if (useDebugConsole)
 					system("PAUSE");
 
-				exit(0);
+				exitApp(); exit(0);
 			}
 
 			std::wstring arg = __wargv[argi];
@@ -4456,7 +4473,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 					if (useDebugConsole)
 						system("PAUSE");
 
-					exit(0);
+					exitApp(); exit(0);
 				}
 			} else if (arg == L"a") {
 				SCResource input;
@@ -4490,7 +4507,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 				if (useDebugConsole)
 					system("PAUSE");
 
-				exit(0);
+				exitApp(); exit(0);
 			}
 		}
 	}
@@ -4506,7 +4523,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 				if (useDebugConsole)
 					system("PAUSE");
 
-				exit(0);
+				exitApp(); exit(0);
 			}
 
 			try {
@@ -4519,7 +4536,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 				if (useDebugConsole)
 					system("PAUSE");
 
-				exit(0);
+				exitApp(); exit(0);
 			}
 		}
 
@@ -4531,7 +4548,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 					if (useDebugConsole)
 						system("PAUSE");
 
-					exit(0);
+					exitApp(); exit(0);
 				}
 
 				std::wstring arg = __wargv[argi];
@@ -4551,7 +4568,7 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 						if (useDebugConsole)
 							system("PAUSE");
 
-						exit(0);
+						exitApp();
 					}
 				} else if (arg == L"a") {
 					SCResource input;
@@ -4585,47 +4602,24 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
 					if (useDebugConsole)
 						system("PAUSE");
 
-					exit(0);
+					exitApp(); exit(0);
 				}
 			}
 		}
 	}
 
 
-
-
-
-
-
-
-	// Instead of exit(0) call exitAPp()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+	// Finally, start rendering if everything was ok
+	// However..
+	
 	// Release GL context
 	wglMakeCurrent(NULL, NULL);
 
-	if (!initFailture) {
-		// Start new thread for render
-		startRenderThread();
+	// Start new thread for render
+	startRenderThread();
 
-		// Enter message dispatching loop
-		enterDispatchLoop();
-	}
+	// Enter message dispatching loop
+	enterDispatchLoop();
 
 	// After dispatch loop: exit and dispose
 	exitApp();
