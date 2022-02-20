@@ -3,6 +3,8 @@
 # Vebro
 Updated & refactored version of [DesktopWallpaper](github.com/bitrate16/DesktopWallpaper) for GLSL & [shadertoy.com](https://shadertoy.com/)
 
+### [Release page](https://github.com/bitrate16/Vebro/releases)
+
 # Overview
 
 * Based on GLSL Shaders in OpenGL
