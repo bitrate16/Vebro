@@ -280,7 +280,7 @@ pack_json['Source'] = 'https://www.shadertoy.com/view/' + shader['info']['id']
 
 # Common and other objects
 common  = get_obj_with_attr(shader['renderpass'], 'name', 'Common')
-main    = get_obj_with_attr(shader['renderpass'], 'name', 'Image')
+main    = get_obj_with_attr(shader['renderpass'], 'name', 'Image') or get_obj_with_attr(shader['renderpass'], 'name', '')
 buffera = get_obj_with_attr(shader['renderpass'], 'name', 'Buffer A') or get_obj_with_attr(shader['renderpass'], 'name', 'Buf A')
 bufferb = get_obj_with_attr(shader['renderpass'], 'name', 'Buffer B') or get_obj_with_attr(shader['renderpass'], 'name', 'Buf B')
 bufferc = get_obj_with_attr(shader['renderpass'], 'name', 'Buffer C') or get_obj_with_attr(shader['renderpass'], 'name', 'Buf C')
