@@ -1,7 +1,7 @@
 ![Vebro](Vebro.svg)
 
 # Vebro
-Updated & refactored version of [DesktopWallpaper](github.com/bitrate16/DesktopWallpaper) for GLSL & [shadertoy.com](https://shadertoy.com/)
+Updated & refactored version of [DesktopWallpaper](github.com/bitrate16/DesktopWallpaper) for GLSL & [shadertoy.com](https://www.shadertoy.com//)
 
 ### [Release page](https://github.com/bitrate16/Vebro/releases)
 
@@ -267,6 +267,42 @@ Example usage:
 Vebro.exe --main Main.glsl --main:0
 ```
 
+# Shader pack downloading
+
+Shader packs can be easily downloaded using [get-pack.py](https://github.com/bitrate16/Vebro/blob/main/get-pack.py) utility from commandline interface or using [get-pack.bat](https://github.com/bitrate16/Vebro/blob/main/get-pack.bat) script that wraps following command (Warning: EULA):
+
+```batch
+python get-pack.py --eula=true --clipboard-url
+```
+
+Commandline interface for get-pack.py has the following options and supports getting url or shader id from clipboard (pyperclip module required):
+
+```
+usage: get-pack.py [-h] (--url URL | --id ID | --clipboard-url | --clipboard-id) [--output OUTPUT] [--outside] [--eula EULA] [--license]
+
+Download shadertoy.com shader
+
+optional arguments:
+  -h, --help       show this help message and exit
+  --url URL        url of the shader, example https://www.shadertoy.com/view/AMSyft
+  --id ID          id of the shader, example AMSyft
+  --clipboard-url  get shader url from clipboard, requires pyperclip module
+  --clipboard-id   get shader id from clipboard, requires pyperclip module
+  --output OUTPUT  output folder and pack name
+  --outside        put pack.json outside of the folder, default is shader name
+  --eula EULA      End User License Agreement
+  --license        License Agreement
+```
+
+Example usage with get-pack.bat:
+
+1. Open [shadertoy.com](https://www.shadertoy.com/)
+2. Find any shader that you like
+3. Copy its url
+4. Run get-pack.bat
+5. Open pack in Vebro
+
+
 # TODO
 
 Todo section:
@@ -278,11 +314,11 @@ Todo section:
 * Parallel rendering same shader on multiple displays using buffer mirroring
 * Mouse click handling
 * Shadertoy shader exporting
-* Shadertoy shader exporting python script
+* ~~Shadertoy shader exporting python script~~
 
 # Credits
 
-* [shadertoy.com](https://shadertoy.com/) for motivation
+* [shadertoy.com](https://www.shadertoy.com//) for motivation
 * [lodepng](https://github.com/lvandeve/lodepng) for PNG decoding library
 * [nlohmann/json](https://github.com/nlohmann/json) for JSON library
 * Khronos Group Inc & OpenGL in common
