@@ -68,6 +68,12 @@ import traceback
 import urllib.parse
 import urllib.request
 
+try:
+	from PIL import Image
+except:
+	print("Install PIL with 'pip install Pillow'")
+	exit(0)
+
 
 SHADER_HEADER = """#version 330 core
 uniform vec3 iResolution;
@@ -348,13 +354,29 @@ if main:
 			
 			urllib.request.urlretrieve(f'https://www.shadertoy.com/{inputs[i]["path"]}', f'{output}/{inputs[i]["path"]}')
 			
+			# Convert to png
+			if not inputs[i]['path'].endswith('.png'):
+				in_path = f'{output}/{inputs[i]["path"]}'
+				inputs[i]["path"] = inputs[i]["path"][:inputs[i]["path"].rfind('.')] + '.png'
+				out_path = f'{output}/{inputs[i]["path"]}'
+				
+				if DEBUG:
+					print('Converting', in_path, 'to PNG')
+				
+				im1 = Image.open(in_path)
+				im1.save(out_path)
+				os.remove(in_path)
+			
 			# Move up a directory
 			if args.outside:
 				inputs[i]['path'] = output + '/' + inputs[i]['path']
 		
 		# TODO: Add other input types
-		elif DEBUG:
-			print('Main shader Input', i, 'has unsupported type:', input_info['type'])
+		else:
+			inputs[i] = None
+			
+			if DEBUG:
+				print('Main shader Input', i, 'has unsupported type:', input_info['type'])
 			
 	pack_json['Main'] = {
 		'inputs': inputs,
@@ -430,13 +452,29 @@ for buffer_name, buffer in zip([ 'BufferA', 'BufferB', 'BufferC', 'BufferD' ], b
 				
 				urllib.request.urlretrieve(f'https://www.shadertoy.com/{inputs[i]["path"]}', f'{output}/{inputs[i]["path"]}')
 			
+				# Convert to png
+				if not inputs[i]['path'].endswith('.png'):
+					in_path = f'{output}/{inputs[i]["path"]}'
+					inputs[i]["path"] = inputs[i]["path"][:inputs[i]["path"].rfind('.')] + '.png'
+					out_path = f'{output}/{inputs[i]["path"]}'
+					
+					if DEBUG:
+						print('Converting', in_path, 'to PNG')
+					
+					im1 = Image.open(in_path)
+					im1.save(out_path)
+					os.remove(in_path)
+			
 				# Move up a directory
 				if args.outside:
 					inputs[i]['path'] = output + '/' + inputs[i]['path']
 			
 			# TODO: Add other input types
-			elif DEBUG:
-				print(buffer_name, 'shader Input', i, 'has unsupported type:', input_info['type'])
+			else:
+				inputs[i] = None
+				
+				if DEBUG:
+					print('Main shader Input', i, 'has unsupported type:', input_info['type'])
 			
 		pack_json[buffer_name] = {
 			'inputs': inputs,
