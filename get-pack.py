@@ -187,7 +187,7 @@ group.add_argument('--id', dest='id', default=None, help='id of the shader, exam
 group.add_argument('--clipboard-url', default=False, dest='clipboard_url', action='store_true', help='get shader url from clipboard, requires pyperclip module')
 group.add_argument('--clipboard-id', default=False, dest='clipboard_id', action='store_true', help='get shader id from clipboard, requires pyperclip module')
 
-parser.add_argument('--output', dest='output', default=None, help='output folder and pack name')
+parser.add_argument('--output', dest='output', default=None, help='output folder and pack name, default is shader name')
 parser.add_argument('--outside', dest='outside', action='store_true', default=None, help='put pack.json outside of the folder')
 
 parser.add_argument('--eula', dest='eula', type=str, default=None, help='End User License Agreement')
