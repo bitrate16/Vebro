@@ -188,7 +188,7 @@ group.add_argument('--clipboard-url', default=False, dest='clipboard_url', actio
 group.add_argument('--clipboard-id', default=False, dest='clipboard_id', action='store_true', help='get shader id from clipboard, requires pyperclip module')
 
 parser.add_argument('--output', dest='output', default=None, help='output folder and pack name')
-parser.add_argument('--outside', dest='outside', default=None, help='put pack.json outside of the folder')
+parser.add_argument('--outside', dest='outside', action='store_true', default=None, help='put pack.json outside of the folder')
 
 parser.add_argument('--eula', dest='eula', type=str, default=None, help='End User License Agreement')
 parser.add_argument('--license', dest='license', action='store_true', default=None, help='License Agreement')
@@ -250,8 +250,6 @@ shader_info = get_shader_info(shader_id)
 if not shader_info:
 	exit(0)
 
-os.makedirs(output, exist_ok=True)
-
 # Output json
 pack_json = {}
 
@@ -265,6 +263,8 @@ if not output:
 	
 	if not output:
 		output = shader_id
+
+os.makedirs(output, exist_ok=True)
 	
 # Save description data
 pack_json['Author'] = shader['info']['username']
@@ -347,6 +347,10 @@ if main:
 				print('Downloading', f'https://www.shadertoy.com/{inputs[i]["path"]}')
 			
 			urllib.request.urlretrieve(f'https://www.shadertoy.com/{inputs[i]["path"]}', f'{output}/{inputs[i]["path"]}')
+			
+			# Move up a directory
+			if args.outside:
+				inputs[i]['path'] = output + '/' + inputs[i]['path']
 		
 		# TODO: Add other input types
 		elif DEBUG:
@@ -354,7 +358,7 @@ if main:
 			
 	pack_json['Main'] = {
 		'inputs': inputs,
-		'path': 'Main.glsl'
+		'path': f'{output}/Main.glsl' if args.outside else 'Main.glsl'
 	}
 
 else:
@@ -426,13 +430,17 @@ for buffer_name, buffer in zip([ 'BufferA', 'BufferB', 'BufferC', 'BufferD' ], b
 				
 				urllib.request.urlretrieve(f'https://www.shadertoy.com/{inputs[i]["path"]}', f'{output}/{inputs[i]["path"]}')
 			
+				# Move up a directory
+				if args.outside:
+					inputs[i]['path'] = output + '/' + inputs[i]['path']
+			
 			# TODO: Add other input types
 			elif DEBUG:
 				print(buffer_name, 'shader Input', i, 'has unsupported type:', input_info['type'])
 			
 		pack_json[buffer_name] = {
 			'inputs': inputs,
-			'path': f'{buffer_name}.glsl'
+			'path': f'{output}/{buffer_name}.glsl' if args.outside else f'{buffer_name}.glsl'
 		}
 
 	else:
@@ -441,7 +449,11 @@ for buffer_name, buffer in zip([ 'BufferA', 'BufferB', 'BufferC', 'BufferD' ], b
 			print(f'Missing {buffer_name} shader')
 
 # Write pack
-with open(f'{output}/{output}.json', 'w') as f:
-	f.write(json.dumps(pack_json, indent=4, sort_keys=True))
+if args.outside:
+	with open(f'{output}.json', 'w') as f:
+		f.write(json.dumps(pack_json, indent=4, sort_keys=True))
+else:
+	with open(f'{output}/{output}.json', 'w') as f:
+		f.write(json.dumps(pack_json, indent=4, sort_keys=True))
 
 
