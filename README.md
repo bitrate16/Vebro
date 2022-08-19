@@ -264,7 +264,7 @@ Important note: In case when you open pack and specify shader files, direct shad
 
 Example usage:
 ```
-Vebro.exe --main Main.glsl --main:0
+Vebro.exe --main Main.glsl --main:0 image:shrek.png
 ```
 
 # Shader pack downloading
